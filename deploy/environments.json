@@ -1,0 +1,11 @@
+{
+  "accountId": "ded2067104a9b14d212d60e790699cf0",
+  "staging": {
+    "databaseName": "meigaku-question-box-staging",
+    "databaseId": "8f9e035f-e600-4cf1-b1f2-1c726c453b11"
+  },
+  "production": {
+    "databaseName": "meigaku-question-box-production",
+    "databaseId": "5643a1b5-a354-4c1b-acc2-a34f68fb6d3b"
+  }
+}
