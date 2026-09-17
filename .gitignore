@@ -44,6 +44,7 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+
 /backups/
 /wrangler.generated.json
 /.wrangler
