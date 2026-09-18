@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 外部（Web/モバイルSDK）からの直接アクセスは完全拒否。
+    // Cloud Run サーバーから ADC / IAM（roles/datastore.user）を通じてのみ操作する。
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

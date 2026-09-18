@@ -1,0 +1,545 @@
+openapi: 3.1.0
+info:
+  title: Meigaku Question Box API
+  version: 1.0.0
+  description: 明治学院大学の来場者向け匿名質問箱システム（Cloud Run API サーバー仕様）
+
+servers:
+  - url: http://localhost:8080
+    description: ローカル開発環境
+  - url: https://api.meigaku-question-box.example.com
+    description: 本番環境（Cloud Run）
+
+paths:
+  /healthz:
+    get:
+      summary: サーバー生存確認
+      description: サーバープロセスのヘルスチェック。DB内容は返さない。
+      responses:
+        '200':
+          description: 正常稼働中
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, timestamp]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: integer
+                    example: 1789610000000
+
+  /api/events:
+    get:
+      summary: 受付中イベント一覧の取得
+      description: 来場者向けに、現在質問受付中（open: true）のイベント一覧を返す。
+      responses:
+        '200':
+          description: 受付中イベントの配列
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+    post:
+      summary: イベントの新規作成
+      description: 運営担当者が新しいイベントを作成する。初期集計（eventStats）および監査ログを同時作成する。
+      security:
+        - GoogleIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventInput'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, ok]
+                properties:
+                  id:
+                    type: string
+                  ok:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+
+  /api/events/{id}:
+    get:
+      summary: イベント詳細の取得
+      description: 指定されたイベントの公開メタデータを取得する。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: イベント詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+    patch:
+      summary: イベント設定の更新
+      description: 運営担当者がイベントのタイトル、日時、受付状態を更新する。楽観的ロック（version）を使用。
+      security:
+        - GoogleIdToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchEventInput'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
+        '409':
+          description: バージョン競合（他者が先に更新）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+
+  /api/questions:
+    post:
+      summary: 質問の匿名投稿
+      description: 来場者からの質問を投稿する。requestId による冪等性担保、IP による連投制限、集計更新を原子的に行う。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionSubmissionInput'
+      responses:
+        '201':
+          description: 新規受付完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionSubmissionResponse'
+        '200':
+          description: 冪等な再送受付完了（同一キー・同一内容）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionSubmissionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: イベント閉鎖中、または同一キーでの内容不一致競合
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          description: レート制限（10分間に5件超過）
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: 次の投稿が可能になるまでの秒数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          $ref: '#/components/responses/SubmissionUncertain'
+
+  /api/admin/me:
+    get:
+      summary: 運営ユーザーの認可確認
+      description: 送信された Google ID トークンを検証し、許可された運営者リストと照合して表示名を返す。
+      security:
+        - GoogleIdToken: []
+      responses:
+        '200':
+          description: 認証成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/events:
+    get:
+      summary: 全イベント一覧の取得（管理用）
+      description: 運営担当者向けに、閉鎖中を含むすべてのイベント一覧を取得する。
+      security:
+        - GoogleIdToken: []
+      responses:
+        '200':
+          description: 全イベント配列
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+
+  /api/admin:
+    get:
+      summary: イベント集計および質問一覧の取得
+      description: 選択されたイベントの集計情報（合計、テーマ別、流入元別、日別）および質問一覧を取得する。カーソルページネーション対応。
+      security:
+        - GoogleIdToken: []
+      parameters:
+        - name: event
+          in: query
+          required: true
+          schema:
+            type: string
+          description: イベントID
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 次ページ取得用の署名付き不透明カーソル
+      responses:
+        '200':
+          description: 集計および質問一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReport'
+        '400':
+          description: 不正なリクエストまたは改ざんされたカーソル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: カーソル失効（期限切れ、またはデータ版変更）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+
+components:
+  securitySchemes:
+    GoogleIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Google Identity Services (GIS) で取得した Google ID トークン
+
+  schemas:
+    Event:
+      type: object
+      required: [id, title, date, open, created_at]
+      properties:
+        id:
+          type: string
+          example: oc-2026-summer
+        title:
+          type: string
+          example: オープンキャンパス2026夏
+        date:
+          type: string
+          example: 2026年8月1日・白金キャンパス
+        open:
+          type: integer
+          enum: [0, 1]
+          example: 1
+        version:
+          type: integer
+          example: 1
+        created_at:
+          type: integer
+          example: 1789453299610
+        updated_at:
+          type: integer
+          example: 1789453299610
+
+    CreateEventInput:
+      type: object
+      required: [title]
+      properties:
+        id:
+          type: string
+          description: 任意指定のイベントID（未指定時はUUID自動生成）
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        date:
+          type: string
+          maxLength: 100
+          default: ''
+        open:
+          type: boolean
+          default: true
+        requestId:
+          type: string
+          format: uuid
+
+    PatchEventInput:
+      type: object
+      required: [version]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        date:
+          type: string
+          maxLength: 100
+        open:
+          type: boolean
+        version:
+          type: integer
+          description: 楽観的ロック用の現バージョン番号
+
+    QuestionSubmissionInput:
+      type: object
+      required: [eventId, body, category, requestId]
+      properties:
+        eventId:
+          type: string
+        body:
+          type: string
+          minLength: 5
+          maxLength: 500
+          description: 質問本文（トリム後5〜500文字）
+        category:
+          type: string
+          enum: [大学生活, 学び・授業, 入試・進路, 留学・国際交流, その他]
+        source:
+          type: string
+          enum: [web, instagram]
+          default: web
+        requestId:
+          type: string
+          format: uuid
+          description: クライアント生成の再送識別子
+
+    QuestionSubmissionResponse:
+      type: object
+      required: [ok, id, requestId]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        id:
+          type: string
+          description: 質問のドキュメントID (SHA-256(requestId))
+        requestId:
+          type: string
+          format: uuid
+
+    AdminMeResponse:
+      type: object
+      required: [displayName, sub]
+      properties:
+        displayName:
+          type: string
+          example: 運営担当者
+        sub:
+          type: string
+          example: '123456789012345678901'
+        email:
+          type: string
+          example: admin@example.com
+
+    QuestionRow:
+      type: object
+      required: [id, body, category, source, created_at]
+      properties:
+        id:
+          type: string
+        body:
+          type: string
+        category:
+          type: string
+        source:
+          type: string
+        created_at:
+          type: integer
+        sequence:
+          type: integer
+
+    AdminReport:
+      type: object
+      required: [total, pageSize, hasNext, generatedAt, categories, sources, days, rows]
+      properties:
+        total:
+          type: integer
+          example: 42
+        pageSize:
+          type: integer
+          example: 50
+        hasNext:
+          type: boolean
+          example: false
+        nextCursor:
+          type: string
+          nullable: true
+        generatedAt:
+          type: integer
+          example: 1789610000000
+        categories:
+          type: array
+          items:
+            type: object
+            required: [category, count]
+            properties:
+              category:
+                type: string
+              count:
+                type: integer
+        sources:
+          type: array
+          items:
+            type: object
+            required: [source, count]
+            properties:
+              source:
+                type: string
+              count:
+                type: integer
+        days:
+          type: array
+          items:
+            type: object
+            required: [day, count]
+            properties:
+              day:
+                type: string
+                example: '2026-09-17'
+              count:
+                type: integer
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionRow'
+
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: 入力内容を確認してください。
+            traceId:
+              type: string
+              format: uuid
+            retryAfterSeconds:
+              type: integer
+
+  responses:
+    ValidationError:
+      description: 入力値不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthenticated:
+      description: 認証未実施またはトークン無効
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: 運営権限なし（未許可Googleアカウント）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    EventNotFound:
+      description: 指定されたイベントが存在しない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    PayloadTooLarge:
+      description: リクエストボディが8KB制限を超過
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    SubmissionUncertain:
+      description: DB競合・タイムアウト等のため結果確認不能（クライアントは同一キーで再送可能）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    StorageUnavailable:
+      description: データベース一時障害
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'

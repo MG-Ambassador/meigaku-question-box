@@ -1,6 +1,6 @@
 # 明学の質問箱：GitHub Pages＋Cloud Run＋Cloud Firestore 開発ロードマップ
 
-作成・更新日：2026-09-17。Google Sheets案を廃止し、Firestore案に全面改訂。現行ソースと公式資料を確認した設計提案。実装・クラウド構築・本番データ確認は未実施。今回の方針では、従来の「本番環境の構築.md」のRender案に代えて本書を参照する。
+作成・更新日：2026-09-18。Google Sheets案を廃止し、Firestore案に全面改訂。フロントエンド静的化・Cloud Runバックエンド・Firestore設定のコアコード実装が完了。手作業セッティングの実行タイミングおよび実装引き継ぎ内容を追記。今回の方針では、従来の「本番環境の構築.md」のRender案に代えて本書を参照する。
 
 ## 1. 結論と成立条件
 
@@ -358,4 +358,208 @@ Firestoreのマネージド日次バックアップを本番で設定し、保�
 - 本文・監査・バックアップの保管期間、許容停止時間、許容損失、公開日。
 
 最初の成果物は、**静的画面→Cloud Run→Firestoreへの冪等な質問保存→GIS認証済み管理画面で閲覧**の縦通しとする。Google Sheetsに依存する実装や設定を追加せず、この構成で検証・移行を進める。
+
+## 15. 手作業セッティングの実行タイミングと手順
+
+GitHub Pages＋Cloud Run＋Cloud Firestore の運用に必要な設定作業は、一度にまとめて行うのではなく、ロードマップの進行に合わせて**3つの主要なタイミング**に分けて実施する。
+
+| タイミング | ロードマップ工程 | 主な目的 | 主な手作業内容 |
+|---|---|---|---|
+| **① 初期基盤セッティング** | **P1（基盤・技術検証）** | 疎通確認・開発環境の確保 | GCPプロジェクト作成、Firestore作成、OAuthクライアントID発行、IAM設定 |
+| **② 自動化セッティング** | **P6（CI/CD・観測）** | GitHub連携・自動デプロイ化 | GitHub Pages有効化、Workload Identity Federation (WIF)、GitHub Secrets設定 |
+| **③ 本番切替セッティング** | **P8（移行・復旧・公開）** | リリース・データ移行 | 既存DB停止、移行スクリプト実行、管理者sub登録、公開URL切替 |
+
+---
+
+### タイミング①：P1（基盤・技術検証）で実行する手作業
+**【実行時期：P0要件確定後／クラウド疎通確認時】**
+
+コードを本格的に稼働させる前に、「Cloud Run ⇔ Firestore ⇔ Googleログイン」が実環境で疎通することを検証するための手作業。
+
+1. **Google Cloud プロジェクト・請求設定**
+   - Google Cloud コンソールで新規プロジェクトを作成（例: `meigaku-question-box`）。
+   - 請求先アカウント（クレジットカード等）を紐付け。
+   - 予期せぬ課金を防ぐため、予算アラート（月額500円・通知先メール設定）を作成。
+2. **必要な API の有効化**
+   - Cloud Consoleの「APIとサービス」から以下のAPIを有効化：
+     - `run.googleapis.com` (Cloud Run API)
+     - `firestore.googleapis.com` (Cloud Firestore API)
+     - `artifactregistry.googleapis.com` (Artifact Registry API)
+     - `iamcredentials.googleapis.com` (IAM Service Account Credentials API)
+3. **Cloud Firestore の初期作成**
+   - 「Firestore」メニューから「データベースの作成」を選択。
+   - データベースモード：**Native mode（ネイティブモード）** を選択。
+   - ロケーション：**東京リージョン (`asia-northeast1`)** を選択。
+   - データベースID：`(default)` を使用。
+4. **Google Identity Services (GIS) の OAuth クライアント ID 作成**
+   - 「APIとサービス」>「認証情報」>「認証情報を作成」>「OAuth クライアント ID」を選択。
+   - アプリケーションの種類：**ウェブ アプリケーション**。
+   - 名前：`meigaku-question-box-web`。
+   - **承認済みの JavaScript 生成元** に以下を追加：
+     - ローカル開発用: `http://localhost:3000`
+     - GitHub Pages用（予定）: `https://<owner>.github.io`
+   - 発行された **クライアント ID**（`xxxx.apps.googleusercontent.com`）を控える。
+5. **Cloud Run 実行用サービスアカウントの作成と IAM 権限付与**
+   - 「IAM と管理」>「サービス アカウント」から作成（例: `meigaku-api-runner`）。
+   - 権限（ロール）：**`roles/datastore.user` (Cloud Datastore ユーザー)** を付与。
+   - ※不要な権限（Owner/Editor）は絶対に付与しない。
+
+---
+
+### タイミング②：P6（CI/CD・観測）で実行する手作業
+**【実行時期：API実装・UI実装（P2〜P5）が完了した後】**
+
+手動デプロイを廃止し、GitHub への push で GitHub Pages と Cloud Run が自動で安全にビルド・反映されるパイプラインを整備する手作業。
+
+1. **GitHub Pages の設定（GitHub リポジトリ側）**
+   - GitHubリポジトリの `Settings` > `Pages` を開く。
+   - **Build and deployment** の Source を **「GitHub Actions」** に変更。
+2. **Workload Identity Federation (WIF) の構築（Google Cloud 側）**
+   - サービスアカウントキー（JSON秘密鍵）を発行せず、GitHub ActionsのOIDCトークンで認証するための設定。
+   - Workload Identity プール（例: `github-actions-pool`）とプロバイダ（例: `github-provider`）を作成。
+   - 発行者URL（Issuer）: `https://token.actions.githubusercontent.com`。
+   - 属性マッピング: `google.subject=assertion.sub`, `attribute.repository=assertion.repository`。
+   - 対象リポジトリ（`MG-Ambassador/meigaku-question-box`）のみを許可する属性条件を設定。
+3. **デプロイ用サービスアカウントの作成と IAM 付与**
+   - デプロイ用サービスアカウント（例: `github-deployer`）を作成。
+   - 権限付与：
+     - Cloud Run 管理者 (`roles/run.admin`)
+     - サービス アカウント ユーザー (`roles/iam.serviceAccountUser`)（実行用アカウントに対する権限）
+     - Artifact Registry 書き込み (`roles/artifactregistry.writer`)
+   - WIFプロバイダからこのサービスアカウントへの偽装権限（`roles/iam.workloadIdentityUser`）をバインド。
+4. **GitHub Secrets / Variables の登録（GitHub リポジトリ側）**
+   - `Settings` > `Secrets and variables` > `Actions` に以下を登録：
+     - **Variables (環境変数)**:
+       - `GCP_PROJECT_ID`: Google Cloud プロジェクトID
+       - `WIF_PROVIDER`: Workload Identity プロバイダのリソース名
+       - `WIF_SERVICE_ACCOUNT`: デプロイ用サービスアカウントのメールアドレス
+       - `NEXT_PUBLIC_BASE_PATH`: GitHub Pagesのベースパス（例: `/meigaku-question-box`）
+       - `NEXT_PUBLIC_API_BASE_URL`: Cloud Run の本番サービスURL
+       - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: GIS OAuth クライアントID
+     - **Secrets (機密情報)**:
+       - `RATE_LIMIT_SECRET`: IPのHMACハッシュ化用ランダム文字列
+       - `CURSOR_SECRET`: ページネーションカーソル署名用ランダム文字列
+       - `ADMIN_IDENTITIES`: 運営許可ユーザーのJSON配列（sub, email, displayName）
+5. **Firestore インデックス・Security Rules・日次バックアップの有効化**
+   - リポジトリの `firestore.rules` と `firestore.indexes.json` をデプロイ。
+   - GCPコンソールまたはgcloud CLIでFirestoreのマネージド日次バックアップスケジュール（保管期間7日）を有効化。
+
+---
+
+### タイミング③：P8（移行・復旧・公開）で実行する手作業
+**【実行時期：総合テスト（P7）合格後、リリース当日】**
+
+1. **現行環境（D1等）の受付停止**
+   - 既存フォームをメンテナンス画面に切り替え、データ更新を遮断。
+2. **データ移行スクリプトの実行**
+   - 作業環境から移行スクリプト（`scripts/migrate-to-firestore.mjs`）を実行。
+   - D1からFirestoreへデータをコピーし、イベント別件数・本文ハッシュ・集計の一致を照合。
+3. **管理者許可リストの最終確認**
+   - 運営メンバーの Google アカウント `sub` が正しく Cloud Run の `ADMIN_IDENTITIES` に反映されているか確認。
+4. **公開URL・QRコード・リンクの切替**
+   - Instagram のプロフィールのリンク（Linktree等）や当日配布用QRコードの遷移先を、新しい GitHub Pages の公開 URL に切り替え。
+
+---
+
+## 16. 現在の実装状況と引き継ぎ内容
+
+### 16.1 ステータスサマリー（2026-09-18 更新）
+
+- **進捗フェーズ**: **P1（最小の縦通し）および P2（契約・データ移行）の実装・検証が完了**。API契約（OpenAPI 3.1）、D1移行スクリプト（dry-run検証済）、集計再構築スクリプト、HMAC署名付きカーソル、完全静的フロントエンド、Cloud Run Express API、Firestoreルール/インデックスが揃い、実機クラウド連携（P1手作業／P6 CI/CD）へ進める状態。
+- **検証済み事項**: 
+  - フロントエンド: Next.js 16 の `output: 'export'` による静的ビルド（`npm run build`）が正常終了（`out/index.html`, `out/admin/index.html` 出力確認済み）。
+  - バックエンド: `server/` 配下の TypeScript コンパイル（`tsc`）が正常終了。単体・統合テスト（`npm run test:server` / 計20件）が全件パス（ヘルスチェック、413/400/401/403/200/409、決定論的ドキュメントID、生IP非保持HMAC、カーソル署名検証・期限切れ検知・改ざん拒絶）。
+  - データ移行: `npm run migrate:dry-run` により、ローカル D1 SQLite（イベント3件、質問7件）の解析、確定的 sequence 採番、requestHash 算出、eventStats 初期構築、整合性照合（全件一致）が完了。
+
+---
+
+### 16.2 実装済みコンポーネント一覧
+
+```text
+meigaku-question-box/
+├── contracts/
+│   └── openapi.yaml                  # [実装済] OpenAPI 3.1 仕様書（公開・管理API、スキーマ、Bearer認証、エラー体系）
+├── app/
+│   ├── page.tsx                      # [実装済] 来場者向け質問投稿画面（Cloud Run API連携、requestId冪等性、basePath対応）
+│   ├── admin/
+│   │   ├── page.tsx                  # [実装済] 管理画面認証ゲート（GIS Googleログイン、トークン検証、403画面）
+│   │   ├── panel.tsx                 # [実装済] 管理ダッシュボード（集計メーター、署名付きカーソル質問一覧、イベント編集モーダル）
+│   │   └── layout.tsx                # [実装済] 管理画面用レイアウト（basePath対応リンク）
+│   └── (旧 app/api/*, operators)     # [撤去済] Cloudflare D1依存コードを削除し legacy/ に退避
+├── components/
+│   ├── google-login.tsx              # [実装済] Google Identity Services (GIS) 公式ボタンコンポーネント
+│   └── ui/*                          # [実装済] 既存デザインシステム（ボタン、モーダル、バッジ、カード等）
+├── lib/
+│   ├── api-client.ts                 # [実装済] Cloud Run API クライアント（Bearerトークン管理、エラーハンドリング、再送）
+│   └── public-url.ts                 # [実装済] GitHub Pages の basePath を考慮した安全なパス解決
+├── server/                           # [実装済] Cloud Run 用 Express バックエンド
+│   ├── src/
+│   │   ├── app.ts / index.ts         # [実装済] Express設定、CORS（Origin制限）、エラーミドルウェア、ヘルスチェック
+│   │   ├── auth.ts                   # [実装済] Google IDトークン検証 (google-auth-library) ＆ ADMIN_IDENTITIES sub認可
+│   │   ├── firestore.ts              # [実装済] Firestore SDK初期化、ADC接続
+│   │   ├── questions.ts              # [実装済] トランザクションによる質問冪等保存・集計(eventStats)・制限同時更新
+│   │   ├── events.ts                 # [実装済] イベント取得・作成・更新（version楽観的ロック）
+│   │   ├── rate-limit.ts             # [実装済] クライアントIP HMACハッシュ化 ＆ 600秒5件レート制限
+│   │   ├── report.ts                 # [実装済] 集計ドキュメント読取、HMAC署名付きカーソル（初回収集スナップショット保持）
+│   │   └── types.ts                  # [実装済] APIおよびFirestoreドキュメントの型定義（Zodスキーマ）
+│   ├── test/
+│   │   ├── app.test.ts               # [実装済] APIサーバー統合テスト（HTTPステータス、CORS、エラーハンドリング）
+│   │   ├── questions.test.ts         # [実装済] 質問バリデーション、冪等ID生成、IPハッシュ単体テスト
+│   │   └── report.test.ts            # [実装済] カーソルエンコード/デコード、署名検証、期限切れ単体テスト
+│   ├── Dockerfile                    # [実装済] Cloud Run 用マルチステージコンテナ定義 (Node.js 22-slim)
+│   ├── package.json / tsconfig.json  # [実装済] サーバー依存関係・ビルド設定
+│   └── .env.example                  # [実装済] サーバー側環境変数テンプレート
+├── scripts/
+│   ├── migrate-to-firestore.mjs      # [実装済] D1 SQLite から Firestore への移行スクリプト（dry-run・execute対応）
+│   └── rebuild-event-stats.mjs       # [実装済] Firestore 質問全件走査による eventStats 再構築・修復スクリプト
+├── firestore.rules                   # [実装済] Web/Mobile直接アクセスを全拒否（Cloud Run IAM経由のみ許可）
+├── firestore.indexes.json            # [実装済] questions/events 用の複合インデックス定義
+├── next.config.ts                    # [実装済] output: 'export', trailingSlash, unoptimized images, basePath設定
+├── package.json                      # [実装済] Next.js 依存関係、ビルド・テスト・移行用 npm scripts
+└── .env.example                      # [実装済] フロントエンド・サーバー共通環境変数テンプレート
+```
+
+---
+
+### 16.3 必要な環境変数・シークレット一覧
+
+#### フロントエンド（GitHub Pages ビルド時 / `.env.production`）
+| 変数名 | 必須 | 説明 | 例 |
+|---|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | ○ | Cloud Run サービスのルートURL | `https://meigaku-api-xxxx-an.a.run.app` |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ○ | Google Identity Services 用 OAuth クライアントID | `xxxx.apps.googleusercontent.com` |
+| `NEXT_PUBLIC_BASE_PATH` | △ | GitHub Pages のリポジトリパス（カスタムドメイン時は空） | `/meigaku-question-box` |
+
+#### バックエンド（Cloud Run 実行時環境変数・シークレット）
+| 変数名 | 必須 | 説明 | 備考 |
+|---|---|---|---|
+| `GOOGLE_CLOUD_PROJECT` | ○ | GCP プロジェクトID | Cloud Run 上では自動注入も可能 |
+| `FIRESTORE_DATABASE_ID` | ○ | Firestore データベースID | 通常は `(default)` |
+| `GOOGLE_CLIENT_ID` | ○ | トークン検証用 OAuth クライアントID | フロントの Client ID と一致させる |
+| `ADMIN_IDENTITIES` | ○ | 許可された管理者の JSON 文字列 | `[{"sub":"12345...","email":"admin@...","displayName":"運営"}]` |
+| `ALLOWED_ORIGINS` | ○ | CORS 許可 Origin（カンマ区切り） | `https://<owner>.github.io,http://localhost:3000` |
+| `RATE_LIMIT_SECRET` | ○ | IP HMAC ハッシュ用秘密鍵 | 十分に長いランダム文字列（Secret Manager推奨） |
+| `CURSOR_SECRET` | ○ | ページネーションカーソル署名用秘密鍵 | 十分に長いランダム文字列（Secret Manager推奨） |
+| `PORT` | - | 待受ポート番号 | Cloud Run では自動で `8080` が設定される |
+
+---
+
+### 16.4 次の作業者が実施するべきネクストアクション
+
+1. **【P1 手作業】Google Cloud 初期環境のセットアップ（第15節 タイミング①）**
+   - GCP プロジェクトの作成、課金紐付け、予算アラート設定（月500円）。
+   - Cloud Firestore（東京リージョン `asia-northeast1` / Native mode）作成。
+   - Google Identity Services (GIS) の OAuth クライアントID発行。
+   - Cloud Run 実行用サービスアカウント（`roles/datastore.user`）作成。
+2. **【P6 手作業＆実装】CI/CD パイプライン構築（第15節 タイミング②）**
+   - GitHub Pages の設定変更（Source: GitHub Actions）。
+   - Google Cloud の Workload Identity Federation (WIF) 設定。
+   - GitHub Secrets / Variables の登録。
+   - ワークフロー作成：
+     - `.github/workflows/deploy-pages.yml`（Pages 自動ビルド・デプロイ）
+     - `.github/workflows/deploy-cloud-run.yml`（Cloud Run 自動ビルド・デプロイ、Rules/Indexes 反映）
+3. **【P7〜P8】総合テスト・移行・公開（第15節 タイミング③）**
+   - 複数インスタンスによる競合・レート制限試験。
+   - `npm run migrate:execute` による本番データ移行と照合。
+   - 公開 URL・QR コード切替。
 
