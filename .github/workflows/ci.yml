@@ -1,0 +1,55 @@
+name: CI Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test & Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: npm --prefix server ci
+
+      - name: Run server tests (Unit & Integration)
+        run: npm run test:server
+
+      - name: Run data migration dry-run test
+        run: npm run migrate:dry-run
+
+      - name: Build frontend for static export
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: 'http://localhost:8080'
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com'
+          NEXT_PUBLIC_BASE_PATH: ''
+
+      - name: Verify static artifacts existence
+        run: |
+          if [ ! -f "out/index.html" ]; then
+            echo "Error: out/index.html not found"
+            exit 1
+          fi
+          if [ ! -f "out/admin/index.html" ]; then
+            echo "Error: out/admin/index.html not found"
+            exit 1
+          fi
+          echo "All static artifacts verified successfully."

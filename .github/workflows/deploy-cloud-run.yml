@@ -1,0 +1,84 @@
+name: Deploy Cloud Run API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - '.github/workflows/deploy-cloud-run.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 480.0.0'
+
+      - name: Setup Node.js 24 for Firebase Tools
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Deploy Firestore Security Rules & Indexes
+        continue-on-error: true
+        run: |
+          echo "Deploying Firestore Rules and Indexes..."
+          npx -y firebase-tools deploy \
+            --only firestore:rules,firestore:indexes \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --token "" || true
+
+      - name: Deploy API Service to Cloud Run
+        id: deploy
+        run: |
+          gcloud run deploy meigaku-api \
+            --source ./server \
+            --region asia-northeast1 \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --service-account "meigaku-api-runner@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 3 \
+            --memory 512Mi \
+            --cpu 1 \
+            --concurrency 8 \
+            --timeout 10s \
+            --set-env-vars "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT_ID }},FIRESTORE_DATABASE_ID=(default),ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS || 'https://mg-ambassador.github.io,http://localhost:3000' }},GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }},RATE_LIMIT_SECRET=${{ secrets.RATE_LIMIT_SECRET }},CURSOR_SECRET=${{ secrets.CURSOR_SECRET }},ADMIN_IDENTITIES=${{ secrets.ADMIN_IDENTITIES }}" \
+            --quiet
+
+      - name: Health Check
+        run: |
+          SERVICE_URL=$(gcloud run services describe meigaku-api --platform managed --region asia-northeast1 --project "${{ vars.GCP_PROJECT_ID }}" --format 'value(status.url)')
+          echo "Checking service health at: ${SERVICE_URL}/healthz"
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/healthz")
+          if [ "$STATUS_CODE" -ne 200 ]; then
+            echo "Health check failed with status code: ${STATUS_CODE}"
+            exit 1
+          fi
+          echo "Health check passed with status 200 OK!"

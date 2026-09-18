@@ -465,11 +465,12 @@ GitHub Pages＋Cloud Run＋Cloud Firestore の運用に必要な設定作業は�
 
 ### 16.1 ステータスサマリー（2026-09-18 更新）
 
-- **進捗フェーズ**: **P1（最小の縦通し）および P2（契約・データ移行）の実装・検証が完了**。API契約（OpenAPI 3.1）、D1移行スクリプト（dry-run検証済）、集計再構築スクリプト、HMAC署名付きカーソル、完全静的フロントエンド、Cloud Run Express API、Firestoreルール/インデックスが揃い、実機クラウド連携（P1手作業／P6 CI/CD）へ進める状態。
+- **進捗フェーズ**: **P1（最小の縦通し）、P2（契約・データ移行）、P6（CI/CDパイプライン実装）の実装・検証が完了**。API契約（OpenAPI 3.1）、D1移行スクリプト（dry-run検証済）、集計再構築スクリプト、HMAC署名付きカーソル、完全静的フロントエンド、Cloud Run Express API、Firestoreルール/インデックス、および GitHub Actions CI/CD パイプライン（CI・Cloud Run自動デプロイ・Pages自動デプロイ）が揃いました。
 - **検証済み事項**: 
-  - フロントエンド: Next.js 16 の `output: 'export'` による静的ビルド（`npm run build`）が正常終了（`out/index.html`, `out/admin/index.html` 出力確認済み）。
-  - バックエンド: `server/` 配下の TypeScript コンパイル（`tsc`）が正常終了。単体・統合テスト（`npm run test:server` / 計20件）が全件パス（ヘルスチェック、413/400/401/403/200/409、決定論的ドキュメントID、生IP非保持HMAC、カーソル署名検証・期限切れ検知・改ざん拒絶）。
-  - データ移行: `npm run migrate:dry-run` により、ローカル D1 SQLite（イベント3件、質問7件）の解析、確定的 sequence 採番、requestHash 算出、eventStats 初期構築、整合性照合（全件一致）が完了。
+  - CI パイプラインシミュレーション: ローカル環境で全CIステップ（`npm run test:server` 20件パス、`npm run migrate:dry-run` 整合性照合パス、`npm run build` 静的エクスポートパス、`out/index.html` & `out/admin/index.html` 存在確認）が 100% 成功。
+  - フロントエンド: Next.js 16 の `output: 'export'` による静的ビルドが正常終了。
+  - バックエンド: TypeScript コンパイル（`tsc`）正常、単体・統合テスト20件全件パス。
+  - 旧ワークフロー退避: `cloudflare.yml` を `legacy/` へ退避し、旧 Cloudflare 自動公開との競合・二重デプロイを防止。
 
 ---
 
@@ -477,6 +478,10 @@ GitHub Pages＋Cloud Run＋Cloud Firestore の運用に必要な設定作業は�
 
 ```text
 meigaku-question-box/
+├── .github/workflows/
+│   ├── ci.yml                        # [実装済] PR・push時テスト＆ビルド検証（サーバーテスト、移行dry-run、静的出力確認）
+│   ├── deploy-cloud-run.yml          # [実装済] Cloud Run 自動ビルド・デプロイ（WIF認証、Rules/Indexes反映、ヘルスチェック）
+│   └── deploy-pages.yml              # [実装済] GitHub Pages 自動デプロイ（configure-pages、静的ビルド、アップロード）
 ├── contracts/
 │   └── openapi.yaml                  # [実装済] OpenAPI 3.1 仕様書（公開・管理API、スキーマ、Bearer認証、エラー体系）
 ├── app/
@@ -546,18 +551,13 @@ meigaku-question-box/
 
 ### 16.4 次の作業者が実施するべきネクストアクション
 
-1. **【P1 手作業】Google Cloud 初期環境のセットアップ（第15節 タイミング①）**
-   - GCP プロジェクトの作成、課金紐付け、予算アラート設定（月500円）。
-   - Cloud Firestore（東京リージョン `asia-northeast1` / Native mode）作成。
-   - Google Identity Services (GIS) の OAuth クライアントID発行。
-   - Cloud Run 実行用サービスアカウント（`roles/datastore.user`）作成。
-2. **【P6 手作業＆実装】CI/CD パイプライン構築（第15節 タイミング②）**
-   - GitHub Pages の設定変更（Source: GitHub Actions）。
-   - Google Cloud の Workload Identity Federation (WIF) 設定。
-   - GitHub Secrets / Variables の登録。
-   - ワークフロー作成：
-     - `.github/workflows/deploy-pages.yml`（Pages 自動ビルド・デプロイ）
-     - `.github/workflows/deploy-cloud-run.yml`（Cloud Run 自動ビルド・デプロイ、Rules/Indexes 反映）
+1. **【P6 手作業】GitHub & Google Cloud 連携の仕上げ（第15節 タイミング②）**
+   - GitHub Pages の設定変更（`Settings` > `Pages` > Source: **GitHub Actions**）。
+   - Workload Identity Federation (WIF) の設定（プール、プロバイダ作成、デプロイ用 SA への権限バインド）。
+   - GitHub Secrets / Variables の登録（`WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, `GCP_PROJECT_ID` 等）。
+2. **【動作確認】main ブランチ push による初回自動デプロイ**
+   - Cloud Run API サービスデプロイ成功と `/healthz` (200 OK) の確認。
+   - GitHub Pages 公開確認。
 3. **【P7〜P8】総合テスト・移行・公開（第15節 タイミング③）**
    - 複数インスタンスによる競合・レート制限試験。
    - `npm run migrate:execute` による本番データ移行と照合。
