@@ -33,7 +33,7 @@ jobs:
         run: npm run test:server
 
       - name: Run data migration dry-run test
-        run: npm run migrate:dry-run
+        run: npm run test:migration
 
       - name: Build frontend for static export
         run: npm run build

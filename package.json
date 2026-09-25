@@ -14,6 +14,7 @@
     "build:legacy": "node scripts/run-framework.mjs build",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "test:server": "npm --prefix server test",
+    "test:migration": "node --test tests/migration-dry-run.test.mjs",
     "migrate:dry-run": "node scripts/migrate-to-firestore.mjs --dry-run",
     "migrate:execute": "node scripts/migrate-to-firestore.mjs --execute",
     "stats:rebuild": "node scripts/rebuild-event-stats.mjs --dry-run",
