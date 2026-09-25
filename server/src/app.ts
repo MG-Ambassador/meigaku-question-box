@@ -72,8 +72,9 @@ export function createApp() {
   // 8KiB ボディサイズ制限 JSON パーサー
   app.use(express.json({ limit: '8kb' }));
 
-  // 生存確認エンドポイント
-  app.get('/healthz', (_req, res) => {
+  // 生存確認。Cloud Runの予約パス（末尾z）との衝突を避ける。
+  // https://cloud.google.com/run/docs/known-issues#reserved-url-paths
+  app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: Date.now() });
   });
 

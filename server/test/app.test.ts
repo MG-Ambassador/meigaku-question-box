@@ -33,8 +33,8 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
     });
   });
 
-  it('GET /healthz: 200 OK と traceId を返すこと', async () => {
-    const res = await fetch(`${baseUrl}/healthz`);
+  it('GET /health: 200 OK と traceId を返すこと', async () => {
+    const res = await fetch(`${baseUrl}/health`);
     assert.equal(res.status, 200);
 
     const body = (await res.json()) as { status: string; timestamp: number };

@@ -107,8 +107,8 @@ jobs:
       - name: Health Check
         run: |
           SERVICE_URL=$(gcloud run services describe meigaku-api --platform managed --region asia-northeast1 --project "${{ vars.GCP_PROJECT_ID }}" --format 'value(status.url)')
-          echo "Checking service health at: ${SERVICE_URL}/healthz"
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/healthz")
+          echo "Checking service health at: ${SERVICE_URL}/health"
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/health")
           if [ "$STATUS_CODE" -ne 200 ]; then
             echo "Health check failed with status code: ${STATUS_CODE}"
             exit 1

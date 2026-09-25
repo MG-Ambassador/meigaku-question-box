@@ -11,7 +11,7 @@ servers:
     description: 本番環境（Cloud Run）
 
 paths:
-  /healthz:
+  /health:
     get:
       summary: サーバー生存確認
       description: サーバープロセスのヘルスチェック。DB内容は返さない。

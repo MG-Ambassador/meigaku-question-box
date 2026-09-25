@@ -157,7 +157,7 @@ Cloud RunのHTTPS URLをベースとする。JSON UTF-8、本文8KiB上限、Coo
 | GET | /api/admin | Bearer | 200 集計・質問・カーソル |
 | POST | /api/events | Bearer | 201 `{event:Event}`、同一再送は200 |
 | PATCH | /api/events/:id | Bearer | 200 `{event:Event}` |
-| GET | /healthz | 不要 | 200 生存確認。DB内容は返さない |
+| GET | /health | 不要 | 200 生存確認。DB内容は返さない |
 
 Eventは`{id,title,date,open,version,created_at,updated_at}`。updatedByは公開しない。イベントGET一覧は初期運用上限100件とし、超過前にカーソル化する。
 
@@ -574,7 +574,7 @@ meigaku-question-box/
    - Workload Identity Federation (WIF) の設定（プール、プロバイダ作成、デプロイ用 SA への権限バインド）。
    - GitHub Secrets / Variables の登録（`WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, `GCP_PROJECT_ID` 等）。
 2. **【動作確認】main ブランチ push による初回自動デプロイ**
-   - Cloud Run API サービスデプロイ成功と `/healthz` (200 OK) の確認。
+   - Cloud Run API サービスデプロイ成功と `/health` (200 OK) の確認。
    - GitHub Pages 公開確認。
 3. **【P7〜P8】総合テスト・移行・公開（第15節 タイミング③）**
    - 複数インスタンスによる競合・レート制限試験。
