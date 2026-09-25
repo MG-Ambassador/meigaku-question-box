@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      - 'firebase.json'
       - 'firestore.rules'
       - 'firestore.indexes.json'
       - '.github/workflows/deploy-cloud-run.yml'
@@ -46,12 +47,11 @@ jobs:
           node-version: '24'
 
       - name: Deploy Firestore Security Rules & Indexes
-        continue-on-error: true
         run: |
           echo "Deploying Firestore Rules and Indexes..."
           npx -y firebase-tools deploy \
             --only firestore:rules,firestore:indexes \
-            --project "${{ vars.GCP_PROJECT_ID }}" || true
+            --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
 
       - name: Generate Cloud Run Environment Configuration
         env:
@@ -99,7 +99,10 @@ jobs:
             --timeout 10s \
             --env-vars-file env.yaml \
             --quiet
-          rm -f env.yaml
+
+      - name: Clean up environment configuration
+        if: always()
+        run: rm -f env.yaml
 
       - name: Health Check
         run: |

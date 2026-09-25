@@ -383,6 +383,9 @@ GitHub Pages＋Cloud Run＋Cloud Firestore の運用に必要な設定作業は�
 2. **必要な API の有効化**
    - Cloud Consoleの「APIとサービス」から以下のAPIを有効化：
      - `run.googleapis.com` (Cloud Run API)
+     - `cloudbuild.googleapis.com` (Cloud Build API)
+     - `firebaserules.googleapis.com` (Firebase Rules API)
+     - `firebase.googleapis.com` (Firebase API)
      - `firestore.googleapis.com` (Cloud Firestore API)
      - `artifactregistry.googleapis.com` (Artifact Registry API)
      - `iamcredentials.googleapis.com` (IAM Service Account Credentials API)
@@ -425,8 +428,23 @@ GitHub Pages＋Cloud Run＋Cloud Firestore の運用に必要な設定作業は�
    - 権限付与：
      - Cloud Run 管理者 (`roles/run.admin`)
      - サービス アカウント ユーザー (`roles/iam.serviceAccountUser`)（実行用アカウントに対する権限）
-     - Artifact Registry 書き込み (`roles/artifactregistry.writer`)
+     - Cloud Run ソース デベロッパー (`roles/run.sourceDeveloper`)（`--source` のビルド・ソース転送）
+     - Service Usage Consumer (`roles/serviceusage.serviceUsageConsumer`)（APIの有効状態確認・利用）
+     - Firebase Rules 管理者 (`roles/firebaserules.admin`)
+     - Cloud Datastore Index 管理者 (`roles/datastore.indexAdmin`)
+     - Firebase 閲覧者 (`roles/firebase.viewer`)（Firebase CLIのプロジェクト・DB情報確認）
+   - ビルド用アカウントには `roles/run.builder` を付与。`gcloud builds get-default-service-account` で実際のIDを確認し、デプロイ用アカウントにそのIDへの `roles/iam.serviceAccountUser` も付与。実行用アカウントとビルド用アカウントは別に扱う。
    - WIFプロバイダからこのサービスアカウントへの偽装権限（`roles/iam.workloadIdentityUser`）をバインド。
+   - 既存アカウントの権限設定は、プロジェクトのIAM変更・API有効化権限を持つ管理者で次を実行（GitHub Actions内では実行しない）。スクリプトは既存の権限を削除せず追加し、WIF設定と実行用アカウントのDB権限は変更しない。
+
+     ```bash
+     gcloud auth login
+     bash scripts/setup-cloud-run-iam.sh meigaku-question-box
+     ```
+
+   - 2026-09-25の失敗ログではWIF認証後、Firestoreの `serviceusage.services.get` 相当の確認で403、Cloud Runで `PERMISSION_DENIED` が発生。Cloud Runログだけでは不足権限を一意に特定できないため、上記のソースデプロイに必要な権限一式を確認する。Firestoreの失敗もCIを停止させるようにし、無視してAPIを公開しない。
+   - IAM反映後、修正をmainへ反映して `Deploy Cloud Run API` を再実行し、Firestoreデプロイ・Cloud Runビルド・Health Checkの成功を確認する。
+   - 参考：[Cloud Runソースデプロイの必要権限](https://docs.cloud.google.com/run/docs/deploying-source-code)、[FirebaseのIAM権限](https://firebase.google.com/docs/projects/iam/permissions)。
 4. **GitHub Secrets / Variables の登録（GitHub リポジトリ側）**
    - `Settings` > `Secrets and variables` > `Actions` に以下を登録：
      - **Variables (環境変数)**:
