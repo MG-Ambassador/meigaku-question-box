@@ -481,14 +481,18 @@ GitHub Pages＋Cloud Run＋Cloud Firestore の運用に必要な設定作業は�
 
 ## 16. 現在の実装状況と引き継ぎ内容
 
-### 16.1 ステータスサマリー（2026-09-18 更新）
+### 16.1 ステータスサマリー（2026-09-25 更新）
 
-- **進捗フェーズ**: **P1（最小の縦通し）、P2（契約・データ移行）、P6（CI/CDパイプライン実装）の実装・検証が完了**。API契約（OpenAPI 3.1）、D1移行スクリプト（dry-run検証済）、集計再構築スクリプト、HMAC署名付きカーソル、完全静的フロントエンド、Cloud Run Express API、Firestoreルール/インデックス、および GitHub Actions CI/CD パイプライン（CI・Cloud Run自動デプロイ・Pages自動デプロイ）が揃いました。
+- **進捗フェーズ**: **P1（最小の縦通し）、P2（契約・データ移行）、P6（CI/CDパイプライン実装）が完了し、本番環境への自動デプロイ・公開に成功**。
+- **公開・稼働状況**:
+  - **フロントエンド（GitHub Pages）**: [https://mg-ambassador.github.io/meigaku-question-box/](https://mg-ambassador.github.io/meigaku-question-box/) （HTTP 200 OK 配信中）
+  - **バックエンド（Cloud Run）**: [https://meigaku-api-t7owyiakeq-an.a.run.app](https://meigaku-api-t7owyiakeq-an.a.run.app) （`/health` エンドポイントで 200 OK 応答中）
+  - **データベース（Cloud Firestore）**: Native mode (asia-northeast1)、Security Rules & Indexes 反映済み。
 - **検証済み事項**: 
-  - CI パイプラインシミュレーション: ローカル環境で全CIステップ（`npm run test:server` 20件パス、`npm run migrate:dry-run` 整合性照合パス、`npm run build` 静的エクスポートパス、`out/index.html` & `out/admin/index.html` 存在確認）が 100% 成功。
-  - フロントエンド: Next.js 16 の `output: 'export'` による静的ビルドが正常終了。
-  - バックエンド: TypeScript コンパイル（`tsc`）正常、単体・統合テスト20件全件パス。
-  - 旧ワークフロー退避: `cloudflare.yml` を `legacy/` へ退避し、旧 Cloudflare 自動公開との競合・二重デプロイを防止。
+  - CI パイプラインシミュレーション: ローカル環境で全CIステップ（`npm run test:server` 20件パス、`npm run migrate:dry-run` 整合性照合パス、`npm run build` 静的エクスポートパス）が 100% 成功。
+  - Workload Identity Federation (WIF): GitHub Actions からのキーレス認証が正常動作。
+  - Cloud Run 自動デプロイ: `env.yaml` 経由による安全な環境変数注入、コンテナビルド、デプロイ、ヘルスチェック疎通に成功。
+  - GitHub Pages 自動デプロイ: Next.js 16 静的エクスポート（HTML/CSS/JS）のビルド・公開に成功。
 
 ---
 
@@ -500,6 +504,7 @@ meigaku-question-box/
 │   ├── ci.yml                        # [実装済] PR・push時テスト＆ビルド検証（サーバーテスト、移行dry-run、静的出力確認）
 │   ├── deploy-cloud-run.yml          # [実装済] Cloud Run 自動ビルド・デプロイ（WIF認証、Rules/Indexes反映、ヘルスチェック）
 │   └── deploy-pages.yml              # [実装済] GitHub Pages 自動デプロイ（configure-pages、静的ビルド、アップロード）
+├── firebase.json                     # [実装済] Firebase CLI 用設定ファイル（rules / indexes デプロイ用）
 ├── contracts/
 │   └── openapi.yaml                  # [実装済] OpenAPI 3.1 仕様書（公開・管理API、スキーマ、Bearer認証、エラー体系）
 ├── app/
@@ -533,6 +538,7 @@ meigaku-question-box/
 │   ├── package.json / tsconfig.json  # [実装済] サーバー依存関係・ビルド設定
 │   └── .env.example                  # [実装済] サーバー側環境変数テンプレート
 ├── scripts/
+│   ├── setup-cloud-run-iam.sh        # [実装済] デプロイ用 SA の IAM 権限一括設定スクリプト
 │   ├── migrate-to-firestore.mjs      # [実装済] D1 SQLite から Firestore への移行スクリプト（dry-run・execute対応）
 │   └── rebuild-event-stats.mjs       # [実装済] Firestore 質問全件走査による eventStats 再構築・修復スクリプト
 ├── firestore.rules                   # [実装済] Web/Mobile直接アクセスを全拒否（Cloud Run IAM経由のみ許可）
@@ -544,40 +550,39 @@ meigaku-question-box/
 
 ---
 
-### 16.3 必要な環境変数・シークレット一覧
+### 16.3 必要な環境変数・シークレット一覧（設定完了済み）
 
-#### フロントエンド（GitHub Pages ビルド時 / `.env.production`）
-| 変数名 | 必須 | 説明 | 例 |
+#### フロントエンド（GitHub Pages ビルド時 / Repository Variables）
+| 変数名 | 設定状態 | 説明 | 本番設定値 |
 |---|---|---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | ○ | Cloud Run サービスのルートURL | `https://meigaku-api-xxxx-an.a.run.app` |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ○ | Google Identity Services 用 OAuth クライアントID | `xxxx.apps.googleusercontent.com` |
-| `NEXT_PUBLIC_BASE_PATH` | △ | GitHub Pages のリポジトリパス（カスタムドメイン時は空） | `/meigaku-question-box` |
+| `NEXT_PUBLIC_API_BASE_URL` | 設定済 | Cloud Run サービスのルートURL | `https://meigaku-api-t7owyiakeq-an.a.run.app` |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | 設定済 | Google Identity Services 用 OAuth クライアントID | `407408718192.apps.googleusercontent.com` |
+| `NEXT_PUBLIC_BASE_PATH` | 設定済 | GitHub Pages のリポジトリパス | `/meigaku-question-box` |
 
-#### バックエンド（Cloud Run 実行時環境変数・シークレット）
-| 変数名 | 必須 | 説明 | 備考 |
+#### バックエンド（Cloud Run 実行時環境変数 / Repository Variables & Secrets）
+| 変数名 | 区分 | 設定状態 | 説明 |
 |---|---|---|---|
-| `GOOGLE_CLOUD_PROJECT` | ○ | GCP プロジェクトID | Cloud Run 上では自動注入も可能 |
-| `FIRESTORE_DATABASE_ID` | ○ | Firestore データベースID | 通常は `(default)` |
-| `GOOGLE_CLIENT_ID` | ○ | トークン検証用 OAuth クライアントID | フロントの Client ID と一致させる |
-| `ADMIN_IDENTITIES` | ○ | 許可された管理者の JSON 文字列 | `[{"sub":"12345...","email":"admin@...","displayName":"運営"}]` |
-| `ALLOWED_ORIGINS` | ○ | CORS 許可 Origin（カンマ区切り） | `https://<owner>.github.io,http://localhost:3000` |
-| `RATE_LIMIT_SECRET` | ○ | IP HMAC ハッシュ用秘密鍵 | 十分に長いランダム文字列（Secret Manager推奨） |
-| `CURSOR_SECRET` | ○ | ページネーションカーソル署名用秘密鍵 | 十分に長いランダム文字列（Secret Manager推奨） |
-| `PORT` | - | 待受ポート番号 | Cloud Run では自動で `8080` が設定される |
+| `GCP_PROJECT_ID` | Variable | 設定済 | `meigaku-question-box` |
+| `WIF_PROVIDER` | Variable | 設定済 | `projects/374573341438/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider` |
+| `WIF_SERVICE_ACCOUNT` | Variable | 設定済 | `github-deployer@meigaku-question-box.iam.gserviceaccount.com` |
+| `ALLOWED_ORIGINS` | Variable | 設定済 | `https://mg-ambassador.github.io,http://localhost:3000` |
+| `ADMIN_IDENTITIES` | Secret | 設定済 | `[{"sub":"111899185133598628994","displayName":"Engineering MGA"}]` |
+| `RATE_LIMIT_SECRET` | Secret | 設定済 | IP HMAC ハッシュ用秘密鍵 |
+| `CURSOR_SECRET` | Secret | 設定済 | ページネーションカーソル署名用秘密鍵 |
 
 ---
 
 ### 16.4 次の作業者が実施するべきネクストアクション
 
-1. **【P6 手作業】GitHub & Google Cloud 連携の仕上げ（第15節 タイミング②）**
-   - GitHub Pages の設定変更（`Settings` > `Pages` > Source: **GitHub Actions**）。
-   - Workload Identity Federation (WIF) の設定（プール、プロバイダ作成、デプロイ用 SA への権限バインド）。
-   - GitHub Secrets / Variables の登録（`WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, `GCP_PROJECT_ID` 等）。
-2. **【動作確認】main ブランチ push による初回自動デプロイ**
-   - Cloud Run API サービスデプロイ成功と `/health` (200 OK) の確認。
-   - GitHub Pages 公開確認。
-3. **【P7〜P8】総合テスト・移行・公開（第15節 タイミング③）**
-   - 複数インスタンスによる競合・レート制限試験。
-   - `npm run migrate:execute` による本番データ移行と照合。
-   - 公開 URL・QR コード切替。
+1. **【P7 総合テスト・実機検証】**
+   - **本番 URL アクセス**: [https://mg-ambassador.github.io/meigaku-question-box/](https://mg-ambassador.github.io/meigaku-question-box/) をブラウザで開く。
+   - **管理者ログイン**: `/admin` へアクセスし、Google ログイン（`Engineering MGA` アカウント）で管理画面が開けることを確認。
+   - **イベント作成・管理**: 管理画面からテストイベントを作成・ステータス変更できることを確認。
+   - **質問投稿テスト**: 一般画面から質問を投稿し、即座に集計・管理画面に反映されることを確認。
+   - **連投制限テスト**: 同一端末から短時間に連続投稿し、適切なエラー（レート制限）が表示されることを確認。
+2. **【P8 移行・復旧・公開（リリース当日）】**
+   - **現行環境停止**: 旧受付フォームの受付を停止。
+   - **データ移行実行**: `PROJECT_ID=meigaku-question-box npm run migrate:execute` を実行し、D1 から本番 Firestore へ過去データを移行。
+   - **集計整合性検証**: `npm run rebuild:stats` または管理画面で過去イベントの質問数・回答数の一致を確認。
+   - **公開リンク切替**: Instagram プロフィール（Linktree 等）や当日用 QR コードの遷移先を新 GitHub Pages URL に切り替え。
 
