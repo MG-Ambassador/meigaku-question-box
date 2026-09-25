@@ -556,7 +556,7 @@ meigaku-question-box/
 | 変数名 | 設定状態 | 説明 | 本番設定値 |
 |---|---|---|---|
 | `NEXT_PUBLIC_API_BASE_URL` | 設定済 | Cloud Run サービスのルートURL | `https://meigaku-api-t7owyiakeq-an.a.run.app` |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | 設定済 | Google Identity Services 用 OAuth クライアントID | `407408718192.apps.googleusercontent.com` |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | 設定済 | Google Identity Services 用 OAuth クライアントID | `374573341438-lijmtaos0ctg9fcngas12ds76r6jesqv.apps.googleusercontent.com` |
 | `NEXT_PUBLIC_BASE_PATH` | 設定済 | GitHub Pages のリポジトリパス | `/meigaku-question-box` |
 
 #### バックエンド（Cloud Run 実行時環境変数 / Repository Variables & Secrets）
