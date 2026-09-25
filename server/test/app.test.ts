@@ -51,7 +51,7 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         eventId: 'test-event',
-        body: '短すぎ',
+        body: '   ',
         category: '大学生活',
         source: 'web',
         requestId: '550e8400-e29b-41d4-a716-446655440000',
@@ -61,7 +61,7 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
     assert.equal(res.status, 400);
     const body = (await res.json()) as any;
     assert.equal(body.error?.code, 'VALIDATION_ERROR');
-    assert.match(body.error?.message, /5文字以上/);
+    assert.match(body.error?.message, /質問を入力してください/);
   });
 
   it('POST /api/questions: 不正なJSON形式時に 400 INVALID_JSON を返すこと', async () => {

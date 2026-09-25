@@ -365,9 +365,9 @@ components:
           type: string
         body:
           type: string
-          minLength: 5
+          minLength: 1
           maxLength: 500
-          description: 質問本文（トリム後5〜500文字）
+          description: 質問本文（トリム後1〜500文字）
         category:
           type: string
           enum: [大学生活, 学び・授業, 入試・進路, 留学・国際交流, その他]

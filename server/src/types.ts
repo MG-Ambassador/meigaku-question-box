@@ -17,7 +17,7 @@ export type Source = (typeof ALLOWED_SOURCES)[number];
 // 質問投稿のリクエスト検証スキーマ
 export const QuestionSubmissionSchema = z.object({
   eventId: z.string().min(1).max(100),
-  body: z.string().trim().min(5, '質問は5文字以上で入力してください').max(500, '質問は500文字以内で入力してください'),
+  body: z.string().trim().min(1, '質問を入力してください').max(500, '質問は500文字以内で入力してください'),
   category: z.enum(ALLOWED_CATEGORIES, {
     errorMap: () => ({ message: 'テーマを一覧から選択してください' }),
   }),

@@ -18,10 +18,23 @@ describe('P1 Questions API - Unit Tests', () => {
     assert.equal(result.success, true);
   });
 
-  it('QuestionSubmissionSchema: 5文字未満の質問を拒絶すること', () => {
+  it('QuestionSubmissionSchema: 1文字の質問を許容すること', () => {
+    const validData = {
+      eventId: 'event-2026-summer',
+      body: 'あ',
+      category: '大学生活',
+      source: 'web',
+      requestId: '550e8400-e29b-41d4-a716-446655440000',
+    };
+
+    const result = QuestionSubmissionSchema.safeParse(validData);
+    assert.equal(result.success, true);
+  });
+
+  it('QuestionSubmissionSchema: 空白のみの質問を拒絶すること', () => {
     const invalidData = {
       eventId: 'event-2026-summer',
-      body: 'あいう',
+      body: '   ',
       category: '大学生活',
       source: 'web',
       requestId: '550e8400-e29b-41d4-a716-446655440000',
@@ -30,7 +43,7 @@ describe('P1 Questions API - Unit Tests', () => {
     const result = QuestionSubmissionSchema.safeParse(invalidData);
     assert.equal(result.success, false);
     if (!result.success) {
-      assert.match(result.error.issues[0].message, /5文字以上/);
+      assert.match(result.error.issues[0].message, /質問を入力してください/);
     }
   });
 

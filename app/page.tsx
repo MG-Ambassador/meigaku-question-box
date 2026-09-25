@@ -284,7 +284,7 @@ export default function Home() {
             <textarea
               id="question"
               required
-              minLength={5}
+              minLength={1}
               maxLength={500}
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -301,7 +301,7 @@ export default function Home() {
 
             <button
               className="primary full"
-              disabled={busy || body.trim().length < 5 || !event?.open}
+              disabled={busy || body.trim().length < 1 || !event?.open}
             >
               {busy ? '送信中…' : '匿名で質問を送る'}
               <Send size={18} />
