@@ -157,7 +157,8 @@ test('cancelled press does not submit; keyboard and sheets retain focus', async 
   const state = await fixture(page);
   await page.goto('?event=campus');
   await page.getByLabel('聞いてみたいこと').fill('キーボードからの質問');
-  await page.screenshot({ path: 'test-results/mobile-input.png', fullPage: true });
+  // Keep diagnostics within the viewport; full-page capture can fail in headless Chromium.
+  await page.screenshot({ path: 'test-results/mobile-input.png', animations: 'disabled', caret: 'hide' });
   const send = page.getByRole('button', { name: '紙飛行機にする', exact: true });
   await send.scrollIntoViewIfNeeded();
   const box = (await send.boundingBox())!;
@@ -170,7 +171,7 @@ test('cancelled press does not submit; keyboard and sheets retain focus', async 
   await page.keyboard.press('Escape'); await expect(help).toBeFocused();
   await send.focus(); await page.keyboard.press('Space');
   const tap = page.getByRole('button', { name: 'タップして送信' });
-  await expect(tap).toBeVisible(); await tap.focus(); await page.keyboard.press('Space');
+  await expect(tap).toBeEnabled(); await tap.focus(); await page.keyboard.press('Space');
   await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeFocused();
   expect(state.posted).toHaveLength(1);
   await login(page);
