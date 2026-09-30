@@ -66,60 +66,73 @@ export function getApiBaseUrl(): string {
  */
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit & { token?: string } = {}
+  options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
   const baseUrl = getApiBaseUrl();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const fullUrl = `${baseUrl}${normalizedPath}`;
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  };
+  const { token, timeoutMs = 15000, ...requestOptions } = options;
+  const headers = new Headers(options.headers);
+  if (options.body) headers.set('Content-Type', 'application/json');
 
-  if (options.token) {
-    headers['Authorization'] = `Bearer ${options.token}`;
-  }
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const controller = new AbortController();
+  const abort = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) abort();
+  else options.signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => controller.abort(new DOMException('通信がタイムアウトしました', 'TimeoutError')), timeoutMs);
 
-  const response = await fetch(fullUrl, {
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(fullUrl, {
+      ...requestOptions,
+      headers,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    let errorDetail: ApiErrorDetail = {
-      code: 'HTTP_ERROR',
-      message: `通信エラーが発生しました (${response.status})`,
-    };
+    if (!response.ok) {
+      let errorDetail: ApiErrorDetail = {
+        code: 'HTTP_ERROR',
+        message: `通信エラーが発生しました (${response.status})`,
+      };
 
-    try {
-      const data = (await response.json()) as { error?: ApiErrorDetail };
-      if (data?.error) {
-        errorDetail = data.error;
+      try {
+        const data = (await response.json()) as { error?: ApiErrorDetail };
+        if (data?.error) {
+          errorDetail = data.error;
+        }
+      } catch {
+        // JSONでない場合
       }
-    } catch {
-      // JSONでない場合
+
+      const retryAfter = response.headers.get('Retry-After');
+      if (retryAfter && !errorDetail.retryAfterSeconds) {
+        const parsed = parseInt(retryAfter, 10);
+        if (!isNaN(parsed)) {
+          errorDetail.retryAfterSeconds = parsed;
+        }
+      }
+
+      throw new ApiError(response.status, errorDetail);
     }
 
-    const retryAfter = response.headers.get('Retry-After');
-    if (retryAfter && !errorDetail.retryAfterSeconds) {
-      const parsed = parseInt(retryAfter, 10);
-      if (!isNaN(parsed)) {
-        errorDetail.retryAfterSeconds = parsed;
-      }
-    }
-
-    throw new ApiError(response.status, errorDetail);
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abort);
   }
-
-  return (await response.json()) as T;
 }
 
 /**
  * 公開：受付中イベント一覧を取得
  */
-export async function getPublicEvents(): Promise<EventItem[]> {
-  return apiFetch<EventItem[]>('/api/events');
+export async function getPublicEvents(signal?: AbortSignal): Promise<EventItem[]> {
+  return apiFetch<EventItem[]>('/api/events', { signal });
+}
+
+export function getPublicEvent(id: string, signal?: AbortSignal): Promise<EventItem> {
+  return apiFetch<EventItem>(`/api/events/${encodeURIComponent(id)}`, { signal });
 }
 
 /**
@@ -155,8 +168,8 @@ export async function getAdminMe(token: string): Promise<{ displayName: string; 
 /**
  * 運営：全イベント一覧（閉鎖中含む）を取得
  */
-export async function getAdminEvents(token: string): Promise<EventItem[]> {
-  return apiFetch<EventItem[]>('/api/admin/events', { token });
+export async function getAdminEvents(token: string, signal?: AbortSignal): Promise<EventItem[]> {
+  return apiFetch<EventItem[]>('/api/admin/events', { token, signal });
 }
 
 /**
@@ -165,13 +178,26 @@ export async function getAdminEvents(token: string): Promise<EventItem[]> {
 export async function getAdminReport(
   token: string,
   eventId: string,
-  pageSize = 50
+  pageSize = 50,
+  cursor?: string | null,
+  signal?: AbortSignal
 ): Promise<ReportData> {
   const query = new URLSearchParams({
     event: eventId,
     pageSize: String(pageSize),
   });
-  return apiFetch<ReportData>(`/api/admin?${query.toString()}`, { token });
+  if (cursor) query.set('cursor', cursor);
+  return apiFetch<ReportData>(`/api/admin?${query.toString()}`, { token, signal });
+}
+
+export function updateAdminEvent(
+  token: string,
+  id: string,
+  data: { title: string; date: string; open: boolean; version: number },
+): Promise<EventItem> {
+  return apiFetch<EventItem>(`/api/events/${encodeURIComponent(id)}`, {
+    method: 'PATCH', token, body: JSON.stringify(data),
+  });
 }
 
 /**

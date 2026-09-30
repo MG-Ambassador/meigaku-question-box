@@ -18,7 +18,9 @@
     "migrate:dry-run": "node scripts/migrate-to-firestore.mjs --dry-run",
     "migrate:execute": "node scripts/migrate-to-firestore.mjs --execute",
     "stats:rebuild": "node scripts/rebuild-event-stats.mjs --dry-run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "test:ui-state": "node --test tests/ui-state.test.mjs",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -35,6 +37,7 @@
     "lucide-react": "^1.31.0",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
+    "qrcode.react": "^4.2.0",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
     "react-day-picker": "^10.0.1",
@@ -50,6 +53,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

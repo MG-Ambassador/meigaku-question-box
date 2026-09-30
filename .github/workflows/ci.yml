@@ -35,6 +35,23 @@ jobs:
       - name: Run data migration dry-run test
         run: npm run test:migration
 
+      - name: Run UI state tests
+        run: npm run test:ui-state
+
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser acceptance tests
+        run: npm run test:ui
+
+      - name: Upload browser test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: test-results/
+          retention-days: 7
+
       - name: Build frontend for static export
         run: npm run build
         env:

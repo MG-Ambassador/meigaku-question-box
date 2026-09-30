@@ -28,7 +28,7 @@
 | 一覧 | offsetを使わず、署名付きカーソル＋単調増加sequence |
 | 認証 | Google IDトークン検証＋許可sub。メールは補助情報 |
 | 費用 | 無料枠を目標。バックアップ、TTL、通信、ビルド等を別途算入 |
-| フロント | 標準Next.js静的エクスポート。既存デザインを維持 |
+| フロント | 標準Next.js静的エクスポート。既存カラー・機能・基盤を維持し、[UI/UX刷新計画](UIUX刷新計画.md)に沿ってUI/UXを刷新 |
 
 Cloud Runの予算通知は支出上限ではない。[Cloud Run料金](https://cloud.google.com/run/pricing)、[予算通知](https://docs.cloud.google.com/billing/docs/how-to/budgets)。ADCはCloud RunのサービスIDを利用する。[サービスID](https://docs.cloud.google.com/run/docs/securing/service-identity)。
 
@@ -104,7 +104,7 @@ scripts/purge-expired-data.mjs
 |---|---|
 | ドキュメントID | 新規投稿はSHA-256(requestId)の固定長文字列。全イベント共通のキー空間 |
 | eventId | string。eventsへの参照をアプリで検証 |
-| body | trim後5〜500 UTF-16コード単位。HTMLとして描画しない |
+| body | trim後1〜500 UTF-16コード単位。HTMLとして描画しない |
 | category | 大学生活／学び・授業／入試・進路／留学・国際交流／その他 |
 | source | web / instagram |
 | requestHash | 正規化したeventId・body・category・source・契約版のハッシュ |

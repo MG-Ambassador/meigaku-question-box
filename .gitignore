@@ -52,3 +52,6 @@ next-env.d.ts
 /.wrangler
 *.tsbuildinfo
 .dev.vars*
+
+/test-results/
+/playwright-report/

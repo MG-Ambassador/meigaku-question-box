@@ -220,7 +220,9 @@ export async function getAdminReportHandler(req: Request, res: Response): Promis
     // 3. 質問一覧のクエリ構築
     let questionsQuery = db
       .collection(COLLECTION_QUESTIONS)
-      .where('eventId', '==', eventId);
+      .where('eventId', '==', eventId)
+      // Even a zero-count snapshot must exclude arrivals after the stats read.
+      .where('sequence', '<=', watermark);
 
     if (decodedCursor) {
       // 次ページ: cursor.lastSequence より小さい sequence を取得
@@ -228,14 +230,7 @@ export async function getAdminReportHandler(req: Request, res: Response): Promis
         .where('sequence', '<', decodedCursor.lastSequence)
         .orderBy('sequence', 'desc');
     } else {
-      // 初回: watermark 以下の sequence を取得
-      if (watermark > 0) {
-        questionsQuery = questionsQuery
-          .where('sequence', '<=', watermark)
-          .orderBy('sequence', 'desc');
-      } else {
-        questionsQuery = questionsQuery.orderBy('sequence', 'desc');
-      }
+      questionsQuery = questionsQuery.orderBy('sequence', 'desc');
     }
 
     questionsQuery = questionsQuery.limit(pageSize + 1);

@@ -1,373 +1,85 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import {
-  getAdminEvents,
-  getAdminReport,
-  saveAdminEvent,
-  type EventItem,
-  type ReportData,
-  ApiError,
-} from '@/lib/api-client';
-import { getRecruitmentUrl } from '@/lib/public-url';
+import { useEffect, useState } from 'react';
+import { BarChart3, LogOut, MessageCircle, Plus, Settings2, Share2, UserRound } from 'lucide-react';
+import { getAdminEvents, ApiError, type EventItem } from '@/lib/api-client';
+import { ActionButton } from '@/components/question-box/action-button';
+import { AppSheet } from '@/components/question-box/app-sheet';
+import { ShareControls } from '@/components/question-box/share-controls';
+import { EventSettings } from '@/components/question-box/event-settings';
+import { EventWorkspace, type AdminTab } from '@/components/question-box/event-workspace';
 
-interface PanelProps {
-  token: string;
-  adminUser: {
-    displayName: string;
-    sub: string;
-    email?: string;
-  };
-  onLogout: () => void;
-}
-
-const emptyReport: ReportData = {
-  total: 0,
-  pageSize: 50,
-  hasNext: false,
-  generatedAt: 0,
-  categories: [],
-  sources: [],
-  days: [],
-  rows: [],
-};
+interface PanelProps { token: string; adminUser: { displayName: string; sub: string; email?: string }; onLogout: () => void }
+const navigation = [ { id: 'questions', label: '質問', icon: MessageCircle }, { id: 'analysis', label: '集計', icon: BarChart3 }, { id: 'settings', label: '設定', icon: Settings2 } ] as const;
 
 export default function Panel({ token, adminUser, onLogout }: PanelProps) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [eventId, setEventId] = useState('');
-  const [report, setReport] = useState<ReportData>(emptyReport);
-  const [msg, setMsg] = useState('');
+  const [tab, setTab] = useState<AdminTab>('questions');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
-  const [accepting, setAccepting] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [page, setPage] = useState(0);
   const [revision, setRevision] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [createRevision, setCreateRevision] = useState(0);
+  const [account, setAccount] = useState(false);
+  const [share, setShare] = useState(false);
+  const event = events.find((item) => item.id === eventId);
 
-  const total = report.total || 0;
-  const event = events.find((e) => e.id === eventId);
-
-  async function loadEvents() {
-    try {
-      const data = await getAdminEvents(token);
-      setEvents(data);
-      setEventId((prev) => prev || data[0]?.id || '');
-    } catch (err: unknown) {
-      if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 403)) {
-        onLogout();
-        return;
+  useEffect(() => {
+    function restore() {
+      const params = new URLSearchParams(window.location.search);
+      const requestedTab = params.get('view');
+      setTab(navigation.some((item) => item.id === requestedTab) ? requestedTab as AdminTab : 'questions');
+      if (params.has('event')) setEventId(params.get('event') || '');
+    }
+    restore(); window.addEventListener('popstate', restore); return () => window.removeEventListener('popstate', restore);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); setLoading(true); setError('');
+    getAdminEvents(token, controller.signal).then((items) => {
+      if (controller.signal.aborted) return;
+      setEvents(items);
+      const url = new URL(window.location.href);
+      const requested = url.searchParams.get('event');
+      const selected = items.some((item) => item.id === requested) ? requested! : items[0]?.id || '';
+      setEventId(selected);
+      if (selected) {
+        url.searchParams.set('event', selected);
+        window.history.replaceState(null, '', `${url.pathname}${url.search}`);
       }
-      setError('イベント一覧を読み込めませんでした。');
-    }
+    }).catch((e) => {
+      if (controller.signal.aborted) return;
+      if (e instanceof ApiError && [401, 403].includes(e.statusCode)) onLogout();
+      else setError('イベント一覧を読み込めませんでした。');
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [token, revision, onLogout]);
+
+  function navigate(nextTab: AdminTab, nextEvent = eventId) {
+    if (nextTab === tab && nextEvent === eventId) return;
+    const url = new URL(window.location.href); url.searchParams.set('view', nextTab);
+    if (nextEvent) url.searchParams.set('event', nextEvent);
+    window.history.pushState(null, '', `${url.pathname}${url.search}`); setTab(nextTab); setEventId(nextEvent);
+  }
+  function saved(item: EventItem) {
+    setEvents((previous) => previous.some((e) => e.id === item.id) ? previous.map((e) => e.id === item.id ? item : e) : [item, ...previous]);
+    setEventId(item.id);
+    if (creating) { setCreating(false); navigate('questions', item.id); }
   }
 
-  useEffect(() => {
-    loadEvents();
-  }, [token]);
-
-  useEffect(() => {
-    if (!eventId) return;
-
-    setReport(emptyReport);
-    setError('');
-    setLoading(true);
-
-    getAdminReport(token, eventId, 50)
-      .then((data) => {
-        setReport(data);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 403)) {
-          onLogout();
-          return;
-        }
-        setError(err instanceof Error ? err.message : '質問を読み込めませんでした。');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [token, eventId, revision]);
-
-  async function saveEvent(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setMsg('');
-
-    try {
-      const res = await saveAdminEvent(token, {
-        id: editing ? eventId : undefined,
-        title,
-        date,
-        open: accepting,
-      });
-
-      await loadEvents();
-      setEventId(res.id);
-      setTitle('');
-      setDate('');
-      setEditing(false);
-      setMsg('イベントを保存しました。');
-    } catch (err: unknown) {
-      setMsg(err instanceof Error ? err.message : 'イベントを保存できませんでした。');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copyLink() {
-    if (!eventId) return;
-    const url = getRecruitmentUrl(eventId);
-    try {
-      await navigator.clipboard.writeText(url);
-      setMsg('募集リンクをコピーしました。');
-    } catch {
-      setMsg('コピーできませんでした。下の募集URLを選択してコピーしてください。');
-    }
-  }
-
-  const recruitmentUrl = eventId ? getRecruitmentUrl(eventId) : '';
-
-  return (
-    <main className="admin">
-      <div className="operator-account">
-        <span>{adminUser.displayName} でログイン中</span>
-        <nav>
-          <button type="button" onClick={onLogout} className="outline text-sm">
-            ログアウト
-          </button>
-        </nav>
-      </div>
-
-      <span className="eyebrow">EVENT INSIGHTS</span>
-      <h1>イベントと集まった質問</h1>
-      <p>イベントを作成して募集リンクを共有し、届いた質問を確認できます。</p>
-
-      <nav className="admin-section-nav" aria-label="運営メニュー">
-        <a href="#event-settings">イベント作成・設定</a>
-        <a href="#analysis">質問の分析</a>
-        <a href="#collected">質問を読む</a>
-      </nav>
-
-      {msg && <p role="status" className="status">{msg}</p>}
-
-      <label htmlFor="admin-event">イベントを選択</label>
-      <Select
-        value={eventId}
-        onValueChange={(v) => {
-          setEventId(v);
-          setEditing(false);
-          setTitle('');
-          setDate('');
-        }}
-      >
-        <SelectTrigger id="admin-event">
-          <SelectValue placeholder="まずはイベントを作成してください" />
-        </SelectTrigger>
-        <SelectContent>
-          {events.map((e) => (
-            <SelectItem key={e.id} value={e.id}>
-              {e.title}（{e.open ? '受付中' : '受付終了'}）
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {event && (
-        <section className="event-overview">
-          <h2>{event.title}</h2>
-          <p>{event.date || '開催日時・会場は未設定'}</p>
-          <div className="admin-actions">
-            <button
-              className="outline"
-              onClick={() => {
-                setEditing(true);
-                setTitle(event.title);
-                setDate(event.date);
-                setAccepting(!!event.open);
-              }}
-            >
-              設定を編集
-            </button>
-            <button className="outline" onClick={copyLink}>
-              募集リンクをコピー
-            </button>
-          </div>
-          <p>会場の案内やInstagramストーリーズにこのリンクを掲載してください。</p>
-          <input
-            aria-label="来場者用の募集URL"
-            readOnly
-            value={recruitmentUrl}
-          />
-        </section>
-      )}
-
-      <form id="event-settings" className="event-form" onSubmit={saveEvent}>
-        <h2>{editing ? 'イベントの設定' : 'イベントを作成'}</h2>
-        <label>
-          イベント名
-          <input
-            required
-            maxLength={100}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="オープンキャンパス / サタビジ！"
-          />
-        </label>
-        <label>
-          開催日時・会場（任意）
-          <input
-            maxLength={100}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-        <label className="admin-actions">
-          <Switch checked={accepting} onCheckedChange={setAccepting} />
-          質問を受け付ける
-        </label>
-        <div className="admin-actions">
-          <button className="primary" disabled={busy}>
-            {busy ? '保存中…' : 'イベントを保存'}
-          </button>
-          {editing && (
-            <button
-              type="button"
-              className="outline"
-              onClick={() => {
-                setEditing(false);
-                setTitle('');
-                setDate('');
-                setAccepting(true);
-              }}
-            >
-              新規作成に戻る
-            </button>
-          )}
-        </div>
-      </form>
-
-      <section id="analysis" aria-busy={loading}>
-        <h2>集まった質問を分析</h2>
-        {error ? (
-          <p role="alert" className="error">{error}</p>
-        ) : loading ? (
-          <p>読み込み中…</p>
-        ) : !eventId ? (
-          <p>イベントを選択すると、質問の内訳を確認できます。</p>
-        ) : (
-          <>
-            <div className="insight-stats">
-              <div>
-                <span>質問の総数</span>
-                <strong>
-                  {total}
-                  <small>件</small>
-                </strong>
-              </div>
-              <div>
-                <span>Instagramリンク経由</span>
-                <strong>
-                  {report.sources.find((s) => s.source === 'instagram')?.count || 0}
-                  <small>件</small>
-                </strong>
-              </div>
-              <div>
-                <span>投稿されたテーマ</span>
-                <strong>
-                  {report.categories.length}
-                  <small>種類</small>
-                </strong>
-              </div>
-            </div>
-
-            <p className="analysis-note">
-              選択したイベントの全質問を集計。投稿者が選んだテーマ・募集リンクの経路をもとにしています。
-            </p>
-
-            <div className="insight-grid">
-              <article>
-                <h3>テーマ別の内訳</h3>
-                {report.categories.length ? (
-                  report.categories.map((c) => (
-                    <div className="insight-row" key={c.category}>
-                      <div>
-                        <span>{c.category}</span>
-                        <strong>
-                          {c.count}件 · {total > 0 ? Math.round((c.count / total) * 100) : 0}%
-                        </strong>
-                      </div>
-                      <meter
-                        min={0}
-                        max={total || 1}
-                        value={c.count}
-                        aria-label={c.category}
-                      />
-                    </div>
-                  ))
-                ) : (
-                  <p>質問が届くと内訳が表示されます。</p>
-                )}
-              </article>
-
-              <article>
-                <h3>日別の質問数</h3>
-                <p className="analysis-note">投稿があった直近30日分・日本時間</p>
-                {report.days.map((d) => (
-                  <div className="daily-row" key={d.day}>
-                    <time>{d.day}</time>
-                    <strong>{d.count}件</strong>
-                  </div>
-                ))}
-                {!report.days.length && <p>まだ質問はありません。</p>}
-              </article>
-            </div>
-          </>
-        )}
-        <button
-          className="outline"
-          disabled={loading || !eventId}
-          onClick={() => setRevision((v) => v + 1)}
-        >
-          最新の質問を読み込む
-        </button>
-      </section>
-
-      <section id="collected">
-        <h2>収集した質問</h2>
-        <p>新しい順に表示しています。質問への回答は実際のイベントで行います。</p>
-        {!loading &&
-          !error &&
-          report.rows.map((q) => (
-            <article key={q.id}>
-              <div className="card-meta">
-                <span>{q.category}</span>
-                <time>
-                  {new Date(q.created_at).toLocaleString('ja-JP', {
-                    timeZone: 'Asia/Tokyo',
-                  })}
-                </time>
-              </div>
-              <h3>{q.body}</h3>
-              <p className="analysis-note">
-                {q.source === 'instagram' ? 'Instagramリンク経由' : 'Webから'} · 匿名
-              </p>
-            </article>
-          ))}
-        {!loading && !error && !report.rows.length && (
-          <p>このイベントの質問はまだありません。</p>
-        )}
-      </section>
-    </main>
-  );
+  return <main className="admin-main">
+    <div className="operator-toolbar"><div className="operator-event-field"><label htmlFor="admin-event">イベント</label><select className="field-input" id="admin-event" value={eventId} disabled={!events.length} onChange={(e) => navigate(tab, e.target.value)}><option value="" disabled>イベントを選ぶ</option>{events.map((item) => <option key={item.id} value={item.id}>{item.title}{item.open ? '' : '（受付終了）'}</option>)}</select></div>
+      <span className={`event-status ${event?.open ? 'is-open' : ''}`}>{event ? event.open ? '受付中' : '受付終了' : '未選択'}</span>
+      <div className="operator-tools"><ActionButton tone="quiet" onClick={() => setShare(true)} disabled={!event} aria-label="募集ページを共有"><Share2 size={20} /></ActionButton><ActionButton tone="quiet" onClick={() => setAccount(true)} aria-label="アカウント"><UserRound size={20} /></ActionButton></div>
+    </div>
+    <nav className="operator-nav" aria-label="運営メニュー">{navigation.map(({ id, label, icon: Icon }) => <ActionButton tone="quiet" key={id} className={tab === id ? 'is-selected' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={21} aria-hidden="true" /><span>{label}</span></ActionButton>)}</nav>
+    {loading && <p className="notice" role="status">イベントを読み込み中…</p>}
+    {error && <div className="notice notice-error" role="alert"><p>{error}</p><ActionButton tone="secondary" onClick={() => setRevision((n) => n + 1)}>再読み込み</ActionButton></div>}
+    {event && <EventWorkspace key={`${token}:${event.id}`} event={event} token={token} tab={tab} onSaved={saved} onAuthError={onLogout} />}
+    {!loading && !error && !event && <section className="surface empty-state"><MessageCircle size={32} /><h1>最初のイベントを作りましょう</h1><p>イベントを作成すると、質問の募集を始められます。</p></section>}
+    {(tab === 'settings' || (!event && !loading)) && <ActionButton className="create-event-button" tone="secondary" onClick={() => { setCreateRevision((v) => v + 1); setCreating(true); }}><Plus size={19} />新しいイベントを作る</ActionButton>}
+    <AppSheet open={account} onOpenChange={setAccount} title="アカウント" description={`${adminUser.displayName} でログイン中`}><ActionButton tone="secondary" onClick={onLogout}><LogOut size={18} />ログアウト</ActionButton></AppSheet>
+    <AppSheet open={share} onOpenChange={setShare} title="質問箱を共有する" description={event?.title || ''}>{event && <ShareControls key={event.id} eventId={event.id} title={event.title} operator />}</AppSheet>
+    <AppSheet open={creating} onOpenChange={setCreating} title="イベントを作る" description="保存すると、募集リンクを共有できます。"><EventSettings key={createRevision} token={token} onSaved={saved} onAuthError={onLogout} /></AppSheet>
+  </main>;
 }

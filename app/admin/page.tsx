@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { ActionButton } from '@/components/question-box/action-button';
 import GoogleLogin, { googleLogout } from '@/components/google-login';
 import Panel from './panel';
 import { getAdminMe, ApiError } from '@/lib/api-client';
@@ -20,7 +21,7 @@ export default function AdminPage() {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  async function handleGoogleSuccess(idToken: string) {
+  const handleGoogleSuccess = useCallback(async (idToken: string) => {
     setToken(idToken);
     setStatus('checking');
     setErrorMessage('');
@@ -40,15 +41,17 @@ export default function AdminPage() {
         );
       }
     }
-  }
+  }, []);
 
-  function handleLogout() {
+  const handleLogout = useCallback(() => {
     setToken('');
     setAdminUser(null);
     setStatus('unauthenticated');
     setErrorMessage('');
     googleLogout();
-  }
+  }, []);
+
+  const handleGoogleError = useCallback((e: Error) => { setStatus('error'); setErrorMessage(e.message); }, []);
 
   // 認証済みの場合：運営ダッシュボードを表示
   if (status === 'authenticated' && adminUser && token) {
@@ -57,8 +60,8 @@ export default function AdminPage() {
 
   // 未認証・認証チェック中・エラー時のログイン画面
   return (
-    <main className="operator-entry min-h-screen flex flex-col items-center justify-center p-6 text-center">
-      <div className="login-card max-w-md w-full p-8 border rounded-xl shadow-sm bg-white">
+    <main className="operator-entry">
+      <div className="login-card surface">
         <span className="eyebrow block text-xs font-semibold tracking-wider text-neutral-500 mb-2">
           MEIGAKU QUESTION BOX · ADMIN
         </span>
@@ -72,35 +75,35 @@ export default function AdminPage() {
 
         {status === 'forbidden' && (
           <div className="py-4">
-            <div className="p-4 border border-amber-300 rounded bg-amber-50 text-amber-800 text-sm mb-4">
+            <div className="notice">
               <p className="font-semibold">アクセス権限がありません</p>
               <p className="mt-1">
                 ログインしたGoogleアカウントは運営者リストに登録されていません。運営責任者までお問い合わせください。
               </p>
             </div>
-            <button
+            <ActionButton
               type="button"
-              className="outline text-sm"
+              tone="secondary"
               onClick={handleLogout}
             >
               別のアカウントでログイン
-            </button>
+            </ActionButton>
           </div>
         )}
 
         {status === 'error' && (
           <div className="py-4">
-            <div className="p-4 border border-red-300 rounded bg-red-50 text-red-800 text-sm mb-4">
+            <div className="notice notice-error" role="alert">
               <p className="font-semibold">認証エラー</p>
               <p className="mt-1">{errorMessage}</p>
             </div>
-            <button
+            <ActionButton
               type="button"
-              className="outline text-sm"
+              tone="secondary"
               onClick={handleLogout}
             >
               もう一度ログインを試す
-            </button>
+            </ActionButton>
           </div>
         )}
 
@@ -111,16 +114,13 @@ export default function AdminPage() {
             </p>
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
-              onError={(e) => {
-                setStatus('error');
-                setErrorMessage(e.message);
-              }}
+              onError={handleGoogleError}
             />
           </div>
         )}
 
         <div className="mt-8 pt-4 border-t text-xs text-neutral-400">
-          <a href={resolvePublicPath('/')} className="hover:underline">
+          <a href={resolvePublicPath('/')} className="entry-visitor">
             ← 来場者用質問画面へ戻る
           </a>
         </div>

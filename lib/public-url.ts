@@ -23,13 +23,9 @@ export function resolvePublicPath(path: string): string {
 /**
  * 募集URLなどの完全修飾URLを生成する
  */
-export function getRecruitmentUrl(eventId: string): string {
-  if (typeof window === 'undefined') {
-    return `/?event=${encodeURIComponent(eventId)}&from=instagram`;
-  }
-
-  const origin = window.location.origin;
+export function getRecruitmentUrl(eventId: string, source: 'web' | 'instagram' = 'web'): string {
+  const origin = typeof window === 'undefined' ? '' : window.location.origin;
   const path = resolvePublicPath('/');
   const cleanPath = path.endsWith('/') ? path : `${path}/`;
-  return `${origin}${cleanPath}?event=${encodeURIComponent(eventId)}&from=instagram`;
+  return `${origin}${cleanPath}?event=${encodeURIComponent(eventId)}${source === 'instagram' ? '&from=instagram' : ''}`;
 }
