@@ -9,5 +9,9 @@ export function appendReport(current: ReportData, page: ReportData): ReportData 
 }
 
 export function newQuestionCount(snapshot: ReportData, latest: ReportData): number {
+  if (snapshot.filteredTotal !== undefined && latest.filteredTotal !== undefined) {
+    return Math.max(0, latest.filteredTotal - snapshot.filteredTotal);
+  }
   return Math.max(0, latest.total - snapshot.total);
 }
+

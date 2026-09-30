@@ -10,8 +10,13 @@ import {
   listAdminEventsHandler,
   saveEventHandler,
   patchEventHandler,
+  lifecycleEventHandler,
 } from './events.js';
-import { getAdminMeHandler, getAdminReportHandler } from './report.js';
+import {
+  getAdminMeHandler,
+  getAdminReportHandler,
+  toggleQuestionFavoriteHandler,
+} from './report.js';
 
 declare global {
   namespace Express {
@@ -54,7 +59,7 @@ export function createApp() {
         }
         return callback(new Error('CORS_NOT_ALLOWED'));
       },
-      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       exposedHeaders: ['Retry-After'],
       credentials: true,
@@ -87,8 +92,10 @@ export function createApp() {
   app.get('/api/admin/me', requireAdminAuth, getAdminMeHandler);
   app.get('/api/admin/events', requireAdminAuth, listAdminEventsHandler);
   app.get('/api/admin', requireAdminAuth, getAdminReportHandler);
+  app.put('/api/admin/questions/:id/favorite', requireAdminAuth, toggleQuestionFavoriteHandler);
   app.post('/api/events', requireAdminAuth, saveEventHandler);
   app.patch('/api/events/:id', requireAdminAuth, patchEventHandler);
+  app.post('/api/events/:id/lifecycle', requireAdminAuth, lifecycleEventHandler);
 
   // 404 ハンドラ
   app.use((_req, res) => {

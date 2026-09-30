@@ -45,6 +45,7 @@
     "examples",
     "server",
     "legacy",
-    "out"
+    "out",
+    "outputs"
   ]
 }

@@ -10,6 +10,7 @@ import {
 } from './firestore.js';
 import {
   QuestionSubmissionSchema,
+  CATEGORY_ORDER,
   type QuestionDoc,
   type EventDoc,
   type EventStatsDoc,
@@ -95,7 +96,7 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
         return { status: 404, code: 'EVENT_NOT_FOUND', message: '指定されたイベントが見つかりません。' };
       }
       const eventData = eventSnap.data() as EventDoc;
-      if (!eventData.open) {
+      if (!eventData.open || (eventData.status && eventData.status !== 'active')) {
         return { status: 409, code: 'EVENT_CLOSED', message: 'このイベントは質問の受付を終了しています。' };
       }
 
@@ -159,6 +160,7 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
         eventId,
         body: body.trim(),
         category,
+        categoryOrder: CATEGORY_ORDER[category],
         source,
         requestHash,
         createdAt: createdAtTimestamp,

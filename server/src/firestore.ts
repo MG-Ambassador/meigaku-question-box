@@ -6,6 +6,7 @@ export const COLLECTION_EVENT_STATS = 'eventStats';
 export const COLLECTION_RATE_LIMITS = 'rateLimits';
 export const COLLECTION_AUDIT = 'audit';
 export const COLLECTION_ADMIN_REQUESTS = 'adminRequests';
+export const COLLECTION_USER_FAVORITES = 'userFavorites';
 
 let firestoreInstance: Firestore | null = null;
 

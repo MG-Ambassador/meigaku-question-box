@@ -10,7 +10,14 @@
  *   node scripts/rebuild-event-stats.mjs --execute [--event <eventId>] [--bump-version]
  */
 
-import { Firestore, Timestamp } from '@google-cloud/firestore';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const require = createRequire(path.join(__dirname, '../server/package.json'));
+const { Firestore, Timestamp } = require('@google-cloud/firestore');
 
 const args = process.argv.slice(2);
 const isExecute = args.includes('--execute');

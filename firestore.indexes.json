@@ -4,16 +4,545 @@
       "collectionGroup": "questions",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "eventId", "order": "ASCENDING" },
-        { "fieldPath": "sequence", "order": "DESCENDING" }
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"}
       ]
     },
     {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "open", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {"fieldPath": "open", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "userFavorites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sub", "order": "ASCENDING"},
+        {"fieldPath": "eventId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"},
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "dayJst", "order": "ASCENDING"},
+        {"fieldPath": "categoryOrder", "order": "ASCENDING"},
+        {"fieldPath": "sequence", "order": "DESCENDING"}
       ]
     }
   ],

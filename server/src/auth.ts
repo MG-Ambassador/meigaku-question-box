@@ -1,9 +1,15 @@
 import type { Request, Response, NextFunction } from 'express';
-import { OAuth2Client } from 'google-auth-library';
 import type { AdminIdentity } from './types.js';
 
-const clientId = process.env.GOOGLE_CLIENT_ID || '';
-const client = new OAuth2Client(clientId);
+let client: any = null;
+async function getOAuthClient(): Promise<any> {
+  if (!client) {
+    const { OAuth2Client } = await import('google-auth-library');
+    const clientId = process.env.GOOGLE_CLIENT_ID || '';
+    client = new OAuth2Client(clientId);
+  }
+  return client;
+}
 
 declare global {
   namespace Express {
@@ -100,9 +106,10 @@ export async function requireAdminAuth(
   }
 
   try {
-    const ticket = await client.verifyIdToken({
+    const oauthClient = await getOAuthClient();
+    const ticket = await oauthClient.verifyIdToken({
       idToken,
-      audience: clientId,
+      audience: process.env.GOOGLE_CLIENT_ID || '',
     });
 
     const payload = ticket.getPayload();

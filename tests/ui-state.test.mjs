@@ -46,8 +46,8 @@ test('pagination keeps the snapshot, deduplicates rows and detects new arrivals 
 test('recruitment URLs keep basePath and only tag explicit Instagram links', () => {
   const old = process.env.NEXT_PUBLIC_BASE_PATH; process.env.NEXT_PUBLIC_BASE_PATH = '/question-box/';
   try {
-    assert.equal(getRecruitmentUrl('a&b'), '/question-box/?event=a%26b');
-    assert.equal(getRecruitmentUrl('a&b', 'instagram'), '/question-box/?event=a%26b&from=instagram');
+    assert.equal(getRecruitmentUrl('a&b'), '/question-box/?room=a%26b');
+    assert.equal(getRecruitmentUrl('a&b', 'instagram'), '/question-box/?room=a%26b&from=instagram');
   } finally { if (old === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH; else process.env.NEXT_PUBLIC_BASE_PATH = old; }
 });
 test('API client passes opaque cursor, auth and optimistic version; does not cache', async () => {

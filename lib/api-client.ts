@@ -30,6 +30,7 @@ export interface EventItem {
   title: string;
   date: string;
   open: number; // 1 or 0
+  status?: 'active' | 'archived' | 'deleted';
   version?: number;
   created_at?: number;
   updated_at?: number;
@@ -39,13 +40,17 @@ export interface QuestionRow {
   id: string;
   body: string;
   category: string;
+  categoryOrder?: number;
   source: string;
   created_at: number;
   sequence?: number;
+  isFavorite?: boolean;
 }
 
 export interface ReportData {
   total: number;
+  filteredTotal?: number;
+  favoriteRevision?: number;
   pageSize: number;
   hasNext: boolean;
   nextCursor?: string | null;
@@ -54,6 +59,16 @@ export interface ReportData {
   sources: { source: string; count: number }[];
   days: { day: string; count: number }[];
   rows: QuestionRow[];
+}
+
+export interface GetAdminReportOptions {
+  pageSize?: number;
+  cursor?: string | null;
+  category?: string;
+  sort?: 'newest' | 'oldest' | 'theme';
+  favorite?: 'all' | 'favorite';
+  day?: string;
+  source?: 'web' | 'instagram';
 }
 
 export function getApiBaseUrl(): string {
@@ -168,26 +183,75 @@ export async function getAdminMe(token: string): Promise<{ displayName: string; 
 /**
  * 運営：全イベント一覧（閉鎖中含む）を取得
  */
-export async function getAdminEvents(token: string, signal?: AbortSignal): Promise<EventItem[]> {
-  return apiFetch<EventItem[]>('/api/admin/events', { token, signal });
+export async function getAdminEvents(
+  token: string,
+  statusOrSignal?: 'active' | 'archived' | 'deleted' | AbortSignal,
+  signal?: AbortSignal
+): Promise<EventItem[]> {
+  let status: 'active' | 'archived' | 'deleted' | undefined;
+  let abortSignal = signal;
+  if (statusOrSignal instanceof AbortSignal) {
+    abortSignal = statusOrSignal;
+  } else if (typeof statusOrSignal === 'string') {
+    status = statusOrSignal;
+  }
+  const path = status ? `/api/admin/events?status=${encodeURIComponent(status)}` : '/api/admin/events';
+  return apiFetch<EventItem[]>(path, { token, signal: abortSignal });
 }
 
 /**
- * 運営：イベントの集計および質問一覧を取得
+ * 運営：イベントの集計および質問一覧を取得（フィルタ・ソート対応）
  */
 export async function getAdminReport(
   token: string,
   eventId: string,
-  pageSize = 50,
+  pageSizeOrOptions: number | GetAdminReportOptions = 50,
   cursor?: string | null,
   signal?: AbortSignal
 ): Promise<ReportData> {
-  const query = new URLSearchParams({
-    event: eventId,
-    pageSize: String(pageSize),
-  });
-  if (cursor) query.set('cursor', cursor);
+  const query = new URLSearchParams({ event: eventId });
+  if (typeof pageSizeOrOptions === 'object') {
+    const opts = pageSizeOrOptions;
+    query.set('pageSize', String(opts.pageSize ?? 50));
+    if (opts.cursor) query.set('cursor', opts.cursor);
+    if (opts.category) query.set('category', opts.category);
+    if (opts.sort) query.set('sort', opts.sort);
+    if (opts.favorite && opts.favorite !== 'all') query.set('favorite', opts.favorite);
+    if (opts.day) query.set('day', opts.day);
+    if (opts.source) query.set('source', opts.source);
+  } else {
+    query.set('pageSize', String(pageSizeOrOptions));
+    if (cursor) query.set('cursor', cursor);
+  }
   return apiFetch<ReportData>(`/api/admin?${query.toString()}`, { token, signal });
+}
+
+export function toggleAdminQuestionFavorite(
+  token: string,
+  questionId: string,
+  favorite: boolean
+): Promise<{ ok: boolean; questionId: string; favorite: boolean }> {
+  return apiFetch<{ ok: boolean; questionId: string; favorite: boolean }>(
+    `/api/admin/questions/${encodeURIComponent(questionId)}/favorite`,
+    {
+      method: 'PUT',
+      token,
+      body: JSON.stringify({ favorite }),
+    }
+  );
+}
+
+export function changeAdminEventLifecycle(
+  token: string,
+  id: string,
+  action: 'archive' | 'unarchive' | 'trash' | 'restore',
+  version: number
+): Promise<EventItem> {
+  return apiFetch<EventItem>(`/api/events/${encodeURIComponent(id)}/lifecycle`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ action, version }),
+  });
 }
 
 export function updateAdminEvent(

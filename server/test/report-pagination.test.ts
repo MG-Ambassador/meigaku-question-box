@@ -9,6 +9,7 @@ function fixture(initial: number) {
   const state = { total: initial, version: 1, afterStats: () => {} };
   const fake = {
     collection(name: string) {
+      if (name === 'events') return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ id: 'test', status: 'active', open: true }) }) }) };
       if (name === 'eventStats') return { doc: () => ({ get: async () => {
         const stats = { total: state.total, lastSequence: state.total, dataVersion: state.version, categories: { '大学生活': state.total }, sources: { web: state.total }, recentDays: {} };
         state.afterStats(); return { exists: true, data: () => stats };
@@ -63,4 +64,17 @@ test('a maintenance version change rejects a previously issued cursor', async ()
   const state = fixture(51); const first = await report(); state.version++;
   const second = await report(first.body.nextCursor);
   assert.equal(second.status, 409); assert.equal(second.body.error.code, 'CURSOR_EXPIRED');
+});
+
+test('deleted room rejects questions listing with 404 EVENT_DELETED', async () => {
+  const fake = {
+    collection(name: string) {
+      if (name === 'events') return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ id: 'test', status: 'deleted', open: false }) }) }) };
+      return { doc: () => ({ get: async () => ({ exists: false }) }) };
+    },
+  };
+  setFirestore(fake as unknown as Firestore);
+  const result = await report();
+  assert.equal(result.status, 404);
+  assert.equal(result.body.error.code, 'EVENT_DELETED');
 });

@@ -267,6 +267,241 @@ a { color: inherit; }
 .category-stat small { color: var(--subtle); font-weight: 400; }
 .category-stat meter { width: 100%; height: 10px; display: block; margin-top: 10px; background: #f5f5f5; border-radius: 8px; border: 0; }
 .category-stat meter::-webkit-meter-bar { background: #f5f5f5; border: 0; height: 10px; }
+:root {
+  --theme-life: #2563eb;
+  --theme-life-bg: #eff6ff;
+  --theme-life-border: #93c5fd;
+
+  --theme-study: #0d9488;
+  --theme-study-bg: #f0fdfa;
+  --theme-study-border: #99f6e4;
+
+  --theme-admission: #ea580c;
+  --theme-admission-bg: #fff7ed;
+  --theme-admission-border: #fed7aa;
+
+  --theme-abroad: #9333ea;
+  --theme-abroad-bg: #faf5ff;
+  --theme-abroad-border: #e9d5ff;
+
+  --theme-other: #475569;
+  --theme-other-bg: #f8fafc;
+  --theme-other-border: #cbd5e1;
+}
+
+.question-row {
+  padding: 22px 24px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-left: 5px solid var(--theme-other);
+  border-radius: 12px;
+  position: relative;
+  transition: box-shadow 150ms ease, border-color 150ms ease;
+}
+.question-row:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+.question-row[data-category="大学生活"] { border-left-color: var(--theme-life); }
+.question-row[data-category="学び・授業"] { border-left-color: var(--theme-study); }
+.question-row[data-category="入試・進路"] { border-left-color: var(--theme-admission); }
+.question-row[data-category="留学・国際交流"] { border-left-color: var(--theme-abroad); }
+.question-row[data-category="その他"] { border-left-color: var(--theme-other); }
+
+.theme-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: .8125rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.theme-badge[data-category="大学生活"] { color: #1d4ed8; background: var(--theme-life-bg); border-color: var(--theme-life-border); }
+.theme-badge[data-category="学び・授業"] { color: #0f766e; background: var(--theme-study-bg); border-color: var(--theme-study-border); }
+.theme-badge[data-category="入試・進路"] { color: #c2410c; background: var(--theme-admission-bg); border-color: var(--theme-admission-border); }
+.theme-badge[data-category="留学・国際交流"] { color: #7e22ce; background: var(--theme-abroad-bg); border-color: var(--theme-abroad-border); }
+.theme-badge[data-category="その他"] { color: #334155; background: var(--theme-other-bg); border-color: var(--theme-other-border); }
+
+.star-button {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: #a1a1a1;
+  transition: transform 120ms ease, color 120ms ease, background-color 120ms ease;
+  touch-action: manipulation;
+}
+.star-button:hover:not(:disabled) {
+  background-color: #f5f5f5;
+  color: #737373;
+}
+.star-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.star-button[aria-pressed="true"] {
+  color: #eab308;
+}
+.star-button[aria-pressed="true"] svg {
+  fill: #eab308;
+}
+.star-button:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 16px;
+}
+.filter-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.filter-chips::-webkit-scrollbar {
+  display: none;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  font-size: .875rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+}
+.filter-chip:hover {
+  background: #f5f5f5;
+}
+.filter-chip.is-active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.filter-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+.filter-select-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.filter-select {
+  height: 40px;
+  padding: 0 28px 0 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  font-size: .875rem;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+.filter-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #92400e;
+  margin-bottom: 16px;
+}
+.theme-group-header {
+  margin: 24px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.theme-group-header h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.undo-box {
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border: 1px dashed #a1a1a1;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: .875rem;
+  color: var(--subtle);
+}
+
+.insight-clickable-card {
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.insight-clickable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.insight-row-button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 12px;
+  margin: 0 -12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.insight-row-button:hover {
+  background-color: #f8fafc;
+}
+.insight-row-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.category-stat[data-category="大学生活"] meter::-webkit-meter-optimum-value { background: var(--theme-life); }
+.category-stat[data-category="大学生活"] meter::-moz-meter-bar { background: var(--theme-life); }
+.category-stat[data-category="学び・授業"] meter::-webkit-meter-optimum-value { background: var(--theme-study); }
+.category-stat[data-category="学び・授業"] meter::-moz-meter-bar { background: var(--theme-study); }
+.category-stat[data-category="入試・進路"] meter::-webkit-meter-optimum-value { background: var(--theme-admission); }
+.category-stat[data-category="入試・進路"] meter::-moz-meter-bar { background: var(--theme-admission); }
+.category-stat[data-category="留学・国際交流"] meter::-webkit-meter-optimum-value { background: var(--theme-abroad); }
+.category-stat[data-category="留学・国際交流"] meter::-moz-meter-bar { background: var(--theme-abroad); }
+.category-stat[data-category="その他"] meter::-webkit-meter-optimum-value { background: var(--theme-other); }
+.category-stat[data-category="その他"] meter::-moz-meter-bar { background: var(--theme-other); }
+
 .category-stat meter::-webkit-meter-optimum-value { background: var(--ink); }
 .category-stat meter::-moz-meter-bar { background: var(--ink); }
 .daily-stat { display: flex; justify-content: space-between; border-bottom: 1px solid #e5e5e5; padding: 12px 0; font-size: .875rem; }
@@ -279,15 +514,453 @@ a { color: inherit; }
 .share-controls > .field-label { margin-bottom: 20px; }
 .accepting-control { min-height: 64px; display: flex; align-items: center; gap: 16px; justify-content: space-between; cursor: pointer; }
 .accepting-control small { display: block; font-size: .8125rem; color: var(--subtle); margin-top: 4px; }
-.accepting-control .accepting-switch { width: 48px; height: 28px; padding: 2px; border-color: #a1a1a1; }
-.accepting-switch [data-slot=switch-thumb] { width: 22px; height: 22px; background: var(--ink); }
-.accepting-switch [data-state=checked] { transform: translateX(19px); }
+.accepting-control .accepting-switch {
+  width: 48px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #a1a1a1;
+  background-color: var(--input);
+  box-sizing: border-box;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.accepting-control .accepting-switch[data-state=checked] {
+  background-color: var(--primary);
+  border-color: var(--ink);
+}
+.accepting-switch [data-slot=switch-thumb] {
+  width: 22px;
+  height: 22px;
+  background: var(--ink);
+  transform: translateX(0);
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.accepting-switch[data-state=checked] [data-slot=switch-thumb] {
+  transform: translateX(20px);
+}
 .conflict-box { border: 1px solid #a1a1a1; border-radius: 12px; padding: 20px; font-size: .875rem; }
 .conflict-box h3 { font-size: 1rem; font-weight: 700; }
 .conflict-box dt { color: var(--subtle); margin-top: 12px; }
 .conflict-box dd { font-weight: 700; overflow-wrap: anywhere; }
 .conflict-box p { margin: 16px 0; }
 .create-event-button { margin-top: 24px; }
+.event-status.is-archived {
+  background: #f1f5f9;
+  color: var(--subtle);
+  border-color: #cbd5e1;
+}
+.event-status.is-deleted {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #f87171;
+}
+
+/* Room Sheet & Tabs */
+.room-sheet-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.room-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  overflow-x: auto;
+}
+.room-tab-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: .875rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--subtle);
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+.room-tab-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--ink);
+}
+.room-tab-btn.is-active {
+  background: var(--ink);
+  color: #ffffff;
+}
+.room-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.room-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  transition: border-color 120ms ease;
+}
+.room-item-card.is-selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.room-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.room-item-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+.room-item-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+.room-lifecycle-card {
+  border: 1px dashed #d1d5db;
+}
+
+/* Paper Airplane & Continuous Origami Folding Submission */
+.paper-sheet {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  position: relative;
+  transition: transform 350ms cubic-bezier(0.2, 0, 0, 1), opacity 350ms ease;
+}
+
+.origami-stage {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  perspective: 900px;
+  padding: 28px 16px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+.origami-sheet {
+  width: 220px;
+  height: 180px;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: origamiPaperFold 420ms cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+
+.origami-body {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  animation: origamiBodyFold 420ms ease-in-out forwards;
+}
+
+.origami-excerpt {
+  font-size: .8125rem;
+  color: var(--ink);
+  line-height: 1.4;
+  margin: 0;
+  opacity: 0.85;
+}
+
+.origami-crease-spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: linear-gradient(to bottom, #94a3b8 0%, #cbd5e1 100%);
+  transform: translateX(-50%);
+  z-index: 10;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.1);
+}
+
+.origami-wing {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.9) 100%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.origami-wing-left {
+  left: 0;
+  transform-origin: right center;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  animation: wingFoldLeft 420ms cubic-bezier(0.2, 0, 0.3, 1) forwards;
+}
+
+.origami-wing-right {
+  right: 0;
+  transform-origin: left center;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  animation: wingFoldRight 420ms cubic-bezier(0.2, 0, 0.3, 1) forwards;
+}
+
+.origami-plane-emerge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.3) rotate(-15deg);
+  z-index: 20;
+  animation: planeEmerge 420ms cubic-bezier(0.2, 0, 0.1, 1) forwards;
+}
+
+@keyframes origamiPaperFold {
+  0% {
+    transform: rotateX(0deg) scale(1);
+  }
+  40% {
+    transform: rotateX(15deg) scale(0.85);
+  }
+  100% {
+    transform: rotateX(30deg) scale(0.5) translateY(20px);
+    opacity: 0.1;
+  }
+}
+
+@keyframes wingFoldLeft {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(70deg) skewY(-8deg);
+    background: #e2e8f0;
+  }
+  100% {
+    transform: rotateY(115deg) skewY(-16deg);
+    opacity: 0.4;
+  }
+}
+
+@keyframes wingFoldRight {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(-70deg) skewY(8deg);
+    background: #e2e8f0;
+  }
+  100% {
+    transform: rotateY(-115deg) skewY(16deg);
+    opacity: 0.4;
+  }
+}
+
+@keyframes origamiBodyFold {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  60% {
+    opacity: 0.6;
+    transform: scaleX(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(0.3);
+  }
+}
+
+@keyframes planeEmerge {
+  0%, 40% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-15deg);
+  }
+  75% {
+    opacity: 0.85;
+    transform: scale(0.85) rotate(-35deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-45deg);
+  }
+}
+
+.prepared-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.paper-preview-card {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.paper-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.paper-preview-body {
+  font-size: .9375rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+  color: var(--ink);
+  padding: 8px 12px;
+  background: #fafafa;
+  border-radius: 8px;
+  border-left: 3px solid var(--ink);
+}
+
+.airplane-runway {
+  height: 220px;
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-x;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  background: linear-gradient(to top, rgba(255, 223, 0, 0.08) 0%, rgba(255, 255, 255, 0.4) 60%, transparent 100%);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.airplane-runway:active {
+  cursor: grabbing;
+}
+.airplane-runway.is-ready {
+  border-color: var(--ink);
+  background: linear-gradient(to top, rgba(255, 223, 0, 0.22) 0%, rgba(255, 223, 0, 0.06) 80%, transparent 100%);
+}
+
+.runway-threshold-line {
+  position: absolute;
+  top: 40px;
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  background: repeating-linear-gradient(to right, #94a3b8 0, #94a3b8 8px, transparent 8px, transparent 16px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 150ms ease;
+}
+.runway-threshold-line.is-ready {
+  background: var(--ink);
+  height: 3px;
+}
+.threshold-label {
+  position: absolute;
+  top: -22px;
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--subtle);
+  background: var(--background);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: .05em;
+  transition: color 150ms ease;
+}
+.runway-threshold-line.is-ready .threshold-label {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.paper-airplane-wrapper {
+  position: absolute;
+  bottom: 24px;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  will-change: transform;
+}
+.airplane-svg {
+  width: 68px;
+  height: 68px;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
+  transition: filter 150ms ease;
+}
+.paper-airplane-wrapper.is-ready .airplane-svg {
+  filter: drop-shadow(0 0 10px rgba(255, 223, 0, 0.9)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.2));
+}
+
+.runway-instruction {
+  position: absolute;
+  bottom: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  color: var(--subtle);
+  font-size: .875rem;
+  font-weight: 700;
+  transition: color 150ms ease;
+}
+.runway-instruction.is-ready {
+  color: var(--ink);
+  font-weight: 800;
+}
+.runway-arrow {
+  animation: bounceUp 1.2s infinite;
+}
+@keyframes bounceUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes airplaneFlyAway {
+  0% {
+    transform: translateY(var(--fly-start, -80px)) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-380px) scale(0.6) rotate(-8deg);
+    opacity: 0;
+  }
+}
+.paper-airplane-wrapper.is-flying {
+  animation: airplaneFlyAway 300ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+.tap-send-button {
+  margin-top: 4px;
+}
+
 .operator-footer { max-width: 1048px; margin: 0 auto; padding: 24px; color: var(--subtle); font-size: .75rem; }
 .operator-entry { padding: 64px 24px; max-width: 520px; margin: 0 auto; }
 .login-card { display: grid; gap: 20px; }
@@ -343,4 +1016,6 @@ a { color: inherit; }
   html { scroll-behavior: auto !important; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .action-button[data-pressed=true]:not(:disabled) > .action-surface { transform: none; outline: 2px solid currentColor; outline-offset: -3px; }
+  .paper-airplane-wrapper { transform: none !important; }
+  .origami-stage { display: none !important; }
 }

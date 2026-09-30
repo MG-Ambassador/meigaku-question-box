@@ -70,6 +70,14 @@ function formatDayJst(date) {
   return `${year}-${month}-${day}`;
 }
 
+const CATEGORY_ORDER = {
+  '大学生活': 0,
+  '学び・授業': 1,
+  '入試・進路': 2,
+  '留学・国際交流': 3,
+  'その他': 4,
+};
+
 async function runMigration() {
   const db = new DatabaseSync(sqlitePath, { readOnly: true });
 
@@ -85,6 +93,7 @@ async function runMigration() {
       title: (ev.title || '').trim(),
       date: (ev.date || '').trim(),
       open: Boolean(ev.open),
+      status: 'active',
       version: 1,
       createdAtMs,
       updatedAtMs: createdAtMs,
@@ -161,6 +170,7 @@ async function runMigration() {
         eventId,
         body,
         category,
+        categoryOrder: CATEGORY_ORDER[category] ?? 4,
         source,
         requestHash,
         createdAtMs,
@@ -251,6 +261,7 @@ async function runMigration() {
       title: ev.title,
       date: ev.date,
       open: ev.open,
+      status: ev.status || 'active',
       version: ev.version,
       createdAt: Timestamp.fromMillis(ev.createdAtMs),
       updatedAt: Timestamp.fromMillis(ev.updatedAtMs),
@@ -293,6 +304,7 @@ async function runMigration() {
       eventId: q.eventId,
       body: q.body,
       category: q.category,
+      categoryOrder: q.categoryOrder,
       source: q.source,
       requestHash: q.requestHash,
       createdAt: Timestamp.fromMillis(q.createdAtMs),

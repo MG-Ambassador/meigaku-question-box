@@ -14,6 +14,17 @@ export type Category = (typeof ALLOWED_CATEGORIES)[number];
 export const ALLOWED_SOURCES = ['web', 'instagram'] as const;
 export type Source = (typeof ALLOWED_SOURCES)[number];
 
+export const CATEGORY_ORDER: Record<Category, number> = {
+  '大学生活': 0,
+  '学び・授業': 1,
+  '入試・進路': 2,
+  '留学・国際交流': 3,
+  'その他': 4,
+};
+
+export const EVENT_STATUSES = ['active', 'archived', 'deleted'] as const;
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+
 // 質問投稿のリクエスト検証スキーマ
 export const QuestionSubmissionSchema = z.object({
   eventId: z.string().min(1).max(100),
@@ -43,14 +54,38 @@ export const PatchEventSchema = z.object({
   version: z.number().int().min(1, 'versionを指定してください'),
 });
 
+export const EventLifecycleSchema = z.object({
+  action: z.enum(['archive', 'unarchive', 'trash', 'restore']),
+  version: z.number().int().min(1, 'versionを指定してください'),
+});
+
+export const FavoriteActionSchema = z.object({
+  favorite: z.boolean(),
+});
+
+export const AdminReportQuerySchema = z.object({
+  event: z.string().min(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().optional(),
+  category: z.enum(ALLOWED_CATEGORIES).optional(),
+  sort: z.enum(['newest', 'oldest', 'theme']).default('newest'),
+  favorite: z.enum(['all', 'favorite', 'true', 'false']).optional(),
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  source: z.enum(ALLOWED_SOURCES).optional(),
+});
+
 export type CreateEventInput = z.infer<typeof CreateEventSchema>;
 export type PatchEventInput = z.infer<typeof PatchEventSchema>;
+export type EventLifecycleInput = z.infer<typeof EventLifecycleSchema>;
+export type FavoriteActionInput = z.infer<typeof FavoriteActionSchema>;
+export type AdminReportQuery = z.infer<typeof AdminReportQuerySchema>;
 
 // Firestore ドキュメント型定義
 export interface QuestionDoc {
   eventId: string;
   body: string;
   category: Category;
+  categoryOrder: number;
   source: Source;
   requestHash: string;
   createdAt: Timestamp;
@@ -63,11 +98,25 @@ export interface EventDoc {
   title: string;
   date: string;
   open: boolean;
+  status?: EventStatus;
   version: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   updatedBy: string;
   schemaVersion: 1;
+}
+
+export interface UserFavoriteDoc {
+  categoryOrder: number;
+  sub: string;
+  questionId: string;
+  eventId: string;
+  category: Category;
+  dayJst: string;
+  source: Source;
+  sequence: number;
+  active: boolean;
+  updatedAt: Timestamp;
 }
 
 export interface EventStatsDoc {

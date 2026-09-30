@@ -142,6 +142,51 @@ paths:
         '503':
           $ref: '#/components/responses/StorageUnavailable'
 
+  /api/events/{id}/lifecycle:
+    post:
+      summary: イベント・ルームの状態遷移（アーカイブ・ごみ箱・復元）
+      description: 運営担当者がイベントの状態（通常/アーカイブ/ごみ箱）を安全に遷移させる。ごみ箱からの復元先はアーカイブ。
+      security:
+        - GoogleIdToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, version]
+              properties:
+                action:
+                  type: string
+                  enum: [archive, unarchive, trash, restore]
+                version:
+                  type: integer
+      responses:
+        '200':
+          description: 状態更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+
   /api/questions:
     post:
       summary: 質問の匿名投稿
@@ -209,13 +254,21 @@ paths:
 
   /api/admin/events:
     get:
-      summary: 全イベント一覧の取得（管理用）
-      description: 運営担当者向けに、閉鎖中を含むすべてのイベント一覧を取得する。
+      summary: イベント一覧の取得（管理用）
+      description: 運営担当者向けに、閉鎖中・アーカイブ・ごみ箱を含むイベント一覧を取得する。
       security:
         - GoogleIdToken: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, archived, deleted]
+          description: イベント・ルームの状態（active/archived/deleted）
       responses:
         '200':
-          description: 全イベント配列
+          description: イベント配列
           content:
             application/json:
               schema:
@@ -229,10 +282,63 @@ paths:
         '503':
           $ref: '#/components/responses/StorageUnavailable'
 
+  /api/admin/questions/{id}/favorite:
+    put:
+      summary: 質問のお気に入り登録・解除（個人用）
+      description: ログイン中の担当者専用のお気に入り状態を希望値に更新する。
+      security:
+        - GoogleIdToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 質問ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [favorite]
+              properties:
+                favorite:
+                  type: boolean
+      responses:
+        '200':
+          description: お気に入り更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, questionId, favorite]
+                properties:
+                  ok:
+                    type: boolean
+                  questionId:
+                    type: string
+                  favorite:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 質問またはイベントが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+
   /api/admin:
     get:
       summary: イベント集計および質問一覧の取得
-      description: 選択されたイベントの集計情報（合計、テーマ別、流入元別、日別）および質問一覧を取得する。カーソルページネーション対応。
+      description: 選択されたイベントの集計情報（合計、テーマ別、流入元別、日別）および質問一覧を取得する。検索条件（テーマ、並び順、お気に入り、日別、流入元）およびカーソルページネーション対応。
       security:
         - GoogleIdToken: []
       parameters:
@@ -256,6 +362,36 @@ paths:
           schema:
             type: string
           description: 次ページ取得用の署名付き不透明カーソル
+        - name: category
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Category'
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [newest, oldest, theme]
+            default: newest
+        - name: favorite
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, favorite]
+            default: all
+        - name: day
+          in: query
+          required: false
+          schema:
+            type: string
+            example: '2026-09-30'
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Source'
       responses:
         '200':
           description: 集計および質問一覧
@@ -308,6 +444,11 @@ components:
           type: integer
           enum: [0, 1]
           example: 1
+        status:
+          type: string
+          enum: [active, archived, deleted]
+          default: active
+          example: active
         version:
           type: integer
           example: 1
@@ -418,12 +559,19 @@ components:
           type: string
         category:
           type: string
+        categoryOrder:
+          type: integer
+          example: 0
         source:
           type: string
         created_at:
           type: integer
         sequence:
           type: integer
+        isFavorite:
+          type: boolean
+          default: false
+          example: true
 
     AdminReport:
       type: object
@@ -432,6 +580,12 @@ components:
         total:
           type: integer
           example: 42
+        favoriteRevision:
+          type: integer
+          description: 個人・ルーム単位のお気に入り版番号。変更時は既存のお気に入りcursorが失効する。
+        filteredTotal:
+          type: integer
+          example: 12
         pageSize:
           type: integer
           example: 50

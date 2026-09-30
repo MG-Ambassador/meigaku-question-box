@@ -28,6 +28,7 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
   });
 
   after(async () => {
+    (server as any).closeAllConnections?.();
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
@@ -118,6 +119,56 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
   it('GET /api/admin: event パラメータなしで 400 VALIDATION_ERROR を返すこと', async () => {
     const res = await fetch(`${baseUrl}/api/admin`, {
       headers: { Authorization: 'Bearer test-token-test-admin-sub-123' },
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as any;
+    assert.equal(body.error?.code, 'VALIDATION_ERROR');
+  });
+
+  it('POST /api/events/:id/lifecycle: 認証なしで 401 UNAUTHENTICATED を返すこと', async () => {
+    const res = await fetch(`${baseUrl}/api/events/test-event/lifecycle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'archive', version: 1 }),
+    });
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as any;
+    assert.equal(body.error?.code, 'UNAUTHENTICATED');
+  });
+
+  it('POST /api/events/:id/lifecycle: 不正なアクションで 400 VALIDATION_ERROR を返すこと', async () => {
+    const res = await fetch(`${baseUrl}/api/events/test-event/lifecycle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token-test-admin-sub-123',
+      },
+      body: JSON.stringify({ action: 'invalid_action', version: 1 }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as any;
+    assert.equal(body.error?.code, 'VALIDATION_ERROR');
+  });
+
+  it('PUT /api/admin/questions/:id/favorite: 認証なしで 401 UNAUTHENTICATED を返すこと', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/questions/test-q/favorite`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ favorite: true }),
+    });
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as any;
+    assert.equal(body.error?.code, 'UNAUTHENTICATED');
+  });
+
+  it('PUT /api/admin/questions/:id/favorite: 不正なボディで 400 VALIDATION_ERROR を返すこと', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/questions/test-q/favorite`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token-test-admin-sub-123',
+      },
+      body: JSON.stringify({ favorite: 'not-a-bool' }),
     });
     assert.equal(res.status, 400);
     const body = (await res.json()) as any;

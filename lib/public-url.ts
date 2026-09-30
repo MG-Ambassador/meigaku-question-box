@@ -21,11 +21,12 @@ export function resolvePublicPath(path: string): string {
 }
 
 /**
- * 募集URLなどの完全修飾URLを生成する
+ * 募集URLなどの完全修飾URLを生成する（正規URL: /?room=<id>）
  */
 export function getRecruitmentUrl(eventId: string, source: 'web' | 'instagram' = 'web'): string {
   const origin = typeof window === 'undefined' ? '' : window.location.origin;
   const path = resolvePublicPath('/');
   const cleanPath = path.endsWith('/') ? path : `${path}/`;
-  return `${origin}${cleanPath}?event=${encodeURIComponent(eventId)}${source === 'instagram' ? '&from=instagram' : ''}`;
+  return `${origin}${cleanPath}?room=${encodeURIComponent(eventId)}${source === 'instagram' ? '&from=instagram' : ''}`;
 }
+
