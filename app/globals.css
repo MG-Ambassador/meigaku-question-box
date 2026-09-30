@@ -961,6 +961,81 @@ a { color: inherit; }
   margin-top: 4px;
 }
 
+/* The flight stage occupies the viewport and keeps controls in normal flow. */
+.flight-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  background: #f6f7f5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23000' opacity='.035' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.flight-dialog::backdrop { background: #f6f7f5; }
+.flight-layout {
+  width: min(100%, 720px);
+  min-height: 100%;
+  margin: auto;
+  padding: max(16px, env(safe-area-inset-top)) 24px max(20px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+.flight-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; }
+.flight-room { font-size: .8125rem; color: var(--subtle); overflow-wrap: anywhere; }
+.flight-header .action-button { flex-shrink: 0; }
+.flight-dialog .prepared-view { flex: 1; gap: 16px; padding-top: 24px; }
+.flight-heading { text-align: center; }
+.flight-heading .eyebrow { color: #65766d; letter-spacing: 0; margin-bottom: 8px; font-size: .6875rem; }
+.flight-heading h1 { font-size: 1.5rem; font-weight: 600; line-height: 1.5; letter-spacing: 0; overflow-wrap: anywhere; }
+.flight-heading h1:focus { outline: none; }
+.flight-dialog .paper-preview-card { padding: 0; background: none; border: 0; border-radius: 0; gap: 0; width: min(100%, 480px); margin-inline: auto; }
+.flight-dialog .paper-preview-body { border: 0; background: none; padding: 0; max-height: none; font-size: .875rem; color: var(--subtle); overflow-wrap: anywhere; }
+.flight-dialog .paper-preview-body.is-expanded { max-height: 24dvh; overflow-y: auto; padding: 12px 0; color: var(--ink); }
+.flight-dialog .paper-preview-body:not(.is-expanded) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.flight-dialog .airplane-runway { flex: 1; min-height: 260px; height: auto; border: 0; border-radius: 0; background: none; overflow: hidden; touch-action: pan-x pinch-zoom; }
+.flight-dialog .paper-airplane-wrapper { width: 144px; height: 144px; bottom: 20px; }
+.flight-dialog .airplane-svg { width: 144px; height: 144px; filter: drop-shadow(0 14px 10px rgb(36 57 45 / 12%)); }
+.flight-dialog .airplane-svg path { stroke: #728178; stroke-width: .6; }
+.flight-dialog .paper-airplane-wrapper.is-ready .airplane-svg { filter: drop-shadow(0 20px 14px rgb(36 57 45 / 18%)); }
+.flight-dialog .runway-instruction { top: 4px; bottom: auto; font-size: .8125rem; font-weight: 400; gap: 8px; }
+.flight-dialog .runway-arrow { animation: none; }
+.flight-dialog .runway-threshold-line { top: auto; bottom: 164px; left: 25%; right: 25%; height: 1px; background: #a8b8ae; opacity: 0; transition: opacity 160ms ease; }
+.flight-dialog .is-dragging .runway-threshold-line { opacity: 1; }
+.flight-dialog .threshold-label { font-size: .6875rem; letter-spacing: 0; background: #f6f7f5; font-weight: 400; white-space: nowrap; }
+.flight-dialog .is-dragging .runway-instruction { opacity: 0; }
+.flight-dialog .is-sending { cursor: default; }
+.flight-dialog .is-sending .paper-airplane-wrapper:not(.is-flying) { opacity: .25; }
+.flight-dialog .submit-area { width: min(100%, 400px); margin: 0 auto; }
+.flight-dialog .submit-status { min-height: 22px; font-size: .75rem; }
+.flight-dialog .origami-stage { position: absolute; bottom: 2px; padding: 0; min-height: 180px; border: 0; border-radius: 0; box-shadow: none; background: none; }
+.flight-dialog .origami-body { z-index: 6; border-radius: 2px; }
+.flight-dialog .origami-sheet { animation-name: flightPaperFold; }
+.flight-dialog .origami-wing { background: #f0f2ef; }
+.flight-dialog .origami-crease-spine { animation: origamiBodyFold 420ms forwards; }
+.flight-dialog .origami-plane-emerge { animation-name: flightPlaneEmerge; }
+.flight-completion { width: min(100%, 480px); min-height: 100%; margin: auto; display: flex; flex-direction: column; justify-content: center; padding: 32px 24px; animation: flightComplete 260ms ease-out; }
+.flight-completion .completion-check { margin-inline: auto; }
+@keyframes flightPaperFold { from { transform: scale(1); } to { transform: scale(1); } }
+@keyframes flightPlaneEmerge { 0%, 45% { opacity: 0; transform: scale(.6) rotate(-8deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes flightComplete { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (max-height: 700px) {
+  .flight-dialog .prepared-view { padding-top: 8px; gap: 8px; }
+  .flight-heading h1 { font-size: 1.25rem; }
+  .flight-dialog .airplane-runway { min-height: 180px; }
+  .flight-dialog .paper-airplane-wrapper { width: 120px; height: 120px; bottom: 0; }
+  .flight-dialog .airplane-svg { width: 120px; height: 120px; }
+  .flight-dialog .origami-stage { bottom: -30px; }
+  .flight-dialog .runway-threshold-line { bottom: 120px; }
+  .flight-layout { padding-inline: 20px; }
+}
+
 .operator-footer { max-width: 1048px; margin: 0 auto; padding: 24px; color: var(--subtle); font-size: .75rem; }
 .operator-entry { padding: 64px 24px; max-width: 520px; margin: 0 auto; }
 .login-card { display: grid; gap: 20px; }

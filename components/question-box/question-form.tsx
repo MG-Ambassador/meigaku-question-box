@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowRight,
   ArrowUp,
@@ -8,7 +8,7 @@ import {
   Edit3,
   LockKeyhole,
   Plane,
-  RotateCcw,
+  ChevronDown,
   Send,
 } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -102,6 +102,9 @@ export function QuestionForm({
   const [dragDist, setDragDist] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isReadyToLaunch, setIsReadyToLaunch] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const stageDialog = useRef<HTMLDialogElement>(null);
+  const stageHeading = useRef<HTMLHeadingElement>(null);
 
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const activePointerId = useRef<number | null>(null);
@@ -167,6 +170,36 @@ export function QuestionForm({
     if (complete) completeHeading.current?.focus();
   }, [complete]);
 
+  useEffect(() => {
+    if (step === 'write' && !complete) return;
+    const dialog = stageDialog.current;
+    dialog?.showModal();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (complete) completeHeading.current?.focus();
+    else if (step === 'prepared') stageHeading.current?.focus();
+    const cancelDrag = () => {
+      activePointerId.current = null;
+      setIsDragging(false);
+      setDragDist(0);
+      setIsReadyToLaunch(false);
+    };
+    document.addEventListener('visibilitychange', cancelDrag);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('visibilitychange', cancelDrag);
+    };
+  }, [step, complete]);
+
+  function returnToPaper() {
+    if (sending.current) return;
+    setPreviewOpen(false);
+    setStep('write');
+    setDragDist(0);
+    setIsReadyToLaunch(false);
+    requestAnimationFrame(() => bodyInput.current?.focus());
+  }
+
   function startFold() {
     if (!current.current.body.trim()) {
       setError('質問を入力してください。');
@@ -192,7 +225,7 @@ export function QuestionForm({
     }
   }
 
-  async function launchAirplane(initialDist = 80) {
+  async function launchAirplane(initialDist = 0) {
     if (
       sending.current ||
       !ready ||
@@ -215,7 +248,7 @@ export function QuestionForm({
     setError('');
 
     // Trigger visual launch animation
-    setIsFlying(true);
+    setIsFlying(!current.current.pending);
     setDragDist(initialDist);
 
     try {
@@ -300,7 +333,7 @@ export function QuestionForm({
       return;
     }
 
-    if (busy || sending.current || offline || remaining > 0) return;
+    if (step !== 'prepared' || busy || sending.current || offline || remaining > 0 || draft.pending || e.button !== 0) return;
     if (!event.open && !draft.pending) return;
 
     activePointerId.current = e.pointerId;
@@ -355,8 +388,10 @@ export function QuestionForm({
     activePointerId.current = null;
     setIsDragging(false);
 
-    if (isReadyToLaunch) {
-      void launchAirplane(dragDist);
+    const dy = dragStart.current.y - e.clientY;
+    const dx = e.clientX - dragStart.current.x;
+    if (isReadyToLaunch && dy >= 80 && dy >= 1.5 * Math.abs(dx)) {
+      void launchAirplane(dy);
     } else {
       // Smooth reset back to base position
       setDragDist(0);
@@ -378,7 +413,8 @@ export function QuestionForm({
 
   if (complete) {
     return (
-      <section className="completion" aria-labelledby="complete-title">
+      <dialog ref={stageDialog} className="flight-dialog" aria-labelledby="complete-title" onCancel={(e) => e.preventDefault()}>
+      <section className="completion flight-completion" aria-labelledby="complete-title">
         <span className="completion-check">
           <Check size={38} strokeWidth={2.5} aria-hidden="true" />
         </span>
@@ -404,6 +440,7 @@ export function QuestionForm({
         </ActionButton>
         <ShareControls eventId={event.id} title={event.title} />
       </section>
+      </dialog>
     );
   }
 
@@ -570,32 +607,21 @@ export function QuestionForm({
         </form>
       )}
 
-      {/* 1-b. Folding step (連続折り畳みアニメーション) */}
-      {step === 'folding' && (
-        <div className="origami-stage" aria-label="紙飛行機へ折り畳み中">
-          <div className="origami-sheet" aria-hidden="true">
-            <div className="origami-body">
-              <span className="theme-badge" data-category={draft.category} style={{ fontSize: '.75rem' }}>
-                {draft.category}
-              </span>
-              <p className="origami-excerpt">{draft.body.slice(0, 80)}{draft.body.length > 80 ? '…' : ''}</p>
-            </div>
-            <div className="origami-wing origami-wing-left" />
-            <div className="origami-wing origami-wing-right" />
-            <div className="origami-crease-spine" />
-            <div className="origami-plane-emerge">
-              <PaperAirplaneSvg />
-            </div>
-          </div>
-          <p className="submit-status muted" role="status">
-            紙飛行機に折っています…
-          </p>
-        </div>
-      )}
-
+      {step !== 'write' && <dialog ref={stageDialog} className="flight-dialog" aria-label="質問を送る" onCancel={(e) => { e.preventDefault(); if (step === 'prepared') returnToPaper(); }}>
+      <div className="flight-layout">
+      <header className="flight-header">
+        <span className="flight-room">{event.title}</span>
+        <ActionButton type="button" tone="quiet" disabled={busy || step === 'folding'} onClick={returnToPaper}>
+          <Edit3 size={16} aria-hidden="true" />書き直す
+        </ActionButton>
+      </header>
       {/* 2. Prepared step (折り畳み完了・スワイプ & タップ送信) */}
-      {step === 'prepared' && (
+      {(step === 'prepared' || step === 'folding') && (
         <div className="prepared-view" aria-label="送信準備">
+          <div className="flight-heading">
+            <p className="eyebrow">{busy ? 'SENDING' : draft.pending ? '確認待ち' : 'READY TO FLY'}</p>
+            <h1 ref={stageHeading} tabIndex={-1}>{busy ? '質問を届けています' : draft.pending ? '送信結果を確認します' : 'あなたの質問を、飛ばそう。'}</h1>
+          </div>
           <div className="paper-preview-card">
             <div className="paper-preview-header">
               <span
@@ -605,32 +631,16 @@ export function QuestionForm({
               >
                 {draft.category}
               </span>
-              <ActionButton
-                type="button"
-                tone="quiet"
-                disabled={busy}
-                onClick={() => {
-                  setStep('write');
-                  requestAnimationFrame(() => bodyInput.current?.focus());
-                }}
-              >
-                <Edit3 size={15} />
-                書き直す
+              <ActionButton type="button" tone="quiet" disabled={step === 'folding'} aria-expanded={previewOpen} aria-controls="flight-question" onClick={() => setPreviewOpen(!previewOpen)}>
+                {previewOpen ? '閉じる' : '内容を確認'}<ChevronDown size={16} aria-hidden="true" style={{ transform: previewOpen ? 'rotate(180deg)' : undefined }} />
               </ActionButton>
             </div>
-            <div className="paper-preview-body">{draft.body}</div>
+            <div id="flight-question" className={`paper-preview-body ${previewOpen ? 'is-expanded' : ''}`}>{previewOpen ? draft.body : `${draft.body.slice(0, 48)}${draft.body.length > 48 ? '…' : ''}`}</div>
           </div>
 
           {draft.pending && !busy && (
             <div className="notice">
               <p>前回の送信結果が未確認です。同じ内容で確認すると、重複せずに受け取れます。</p>
-              <ActionButton
-                type="button"
-                tone="quiet"
-                onClick={() => setEditPending(true)}
-              >
-                内容を変更する
-              </ActionButton>
             </div>
           )}
 
@@ -643,7 +653,7 @@ export function QuestionForm({
           {/* Interactive Runway for Swipe Gesture */}
           <div
             ref={runwayRef}
-            className={`airplane-runway ${isReadyToLaunch ? 'is-ready' : ''}`}
+            className={`airplane-runway ${isReadyToLaunch ? 'is-ready' : ''} ${isDragging ? 'is-dragging' : ''} ${busy || draft.pending ? 'is-sending' : ''}`}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -653,18 +663,28 @@ export function QuestionForm({
             {/* 80px Threshold line */}
             <div className={`runway-threshold-line ${isReadyToLaunch ? 'is-ready' : ''}`}>
               <span className="threshold-label">
-                {isReadyToLaunch ? '✓ この位置で離すと送信！' : 'ここまで引き上げる'}
+                {isReadyToLaunch ? '指を離して送信' : 'ここまで引き上げる'}
               </span>
             </div>
 
             {/* Instruction text with bounce arrow */}
             <div className={`runway-instruction ${isReadyToLaunch ? 'is-ready' : ''}`}>
-              {!isReadyToLaunch && <ArrowUp size={20} className="runway-arrow" aria-hidden="true" />}
-              <span>{isReadyToLaunch ? '指を離して飛ばす！' : '上にスワイプして送信'}</span>
+              {!isReadyToLaunch && !busy && !draft.pending && <ArrowUp size={20} className="runway-arrow" aria-hidden="true" />}
+              <span>{step === 'folding' ? '紙飛行機に折っています…' : busy ? '受付を確認しています…' : draft.pending ? '内容は保存されています' : isReadyToLaunch ? '指を離して飛ばす' : '上にスワイプして送信'}</span>
             </div>
 
+            {step === 'folding' && <div className="origami-stage" aria-label="紙飛行機へ折り畳み中">
+              <div className="origami-sheet" aria-hidden="true">
+                <div className="origami-body"><p className="origami-excerpt">{draft.body.slice(0, 80)}</p></div>
+                <div className="origami-wing origami-wing-left" />
+                <div className="origami-wing origami-wing-right" />
+                <div className="origami-crease-spine" />
+                <div className="origami-plane-emerge"><PaperAirplaneSvg /></div>
+              </div>
+            </div>}
+
             {/* Paper Airplane */}
-            <div
+            {step === 'prepared' && <div
               className={`paper-airplane-wrapper ${isReadyToLaunch ? 'is-ready' : ''} ${
                 isFlying ? 'is-flying' : ''
               }`}
@@ -675,20 +695,23 @@ export function QuestionForm({
                     ? 'none'
                     : `translateY(${-dragDist}px)`,
                 transition: isDragging ? 'none' : 'transform 160ms ease-out',
-                ['--fly-start' as any]: `${-dragDist}px`,
-              }}
+                '--fly-start': `${-dragDist}px`,
+              } as CSSProperties}
             >
               <PaperAirplaneSvg />
-            </div>
+            </div>}
           </div>
 
           {/* Accessible Alternative: Tap to Send Button */}
           <div className="submit-area">
+            {offline && <p className="notice" role="status">オフラインです。内容を残して接続を待っています。</p>}
+            {!event.open && !draft.pending && <p className="notice" role="status">このルームは受付を終了しました。</p>}
             <ActionButton
               type="button"
               className="full-width tap-send-button"
               busy={busy}
               disabled={
+                step === 'folding' ||
                 !ready ||
                 offline ||
                 remaining > 0 ||
@@ -711,11 +734,13 @@ export function QuestionForm({
             <p className="submit-status muted" role="status">
               {slow
                 ? '送信に時間がかかっています。入力内容は保持しています。'
-                : 'スワイプでも、ボタンのタップでも送信できます。'}
+                : busy ? 'この画面で受付完了をお待ちください。' : draft.pending ? '同じ質問が重複して送られることはありません。' : 'まだ送信されていません。'}
             </p>
           </div>
         </div>
       )}
+      </div>
+      </dialog>}
 
       <ConfirmDialog
         open={editPending}
@@ -733,4 +758,3 @@ export function QuestionForm({
     </div>
   );
 }
-

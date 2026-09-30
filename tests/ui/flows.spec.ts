@@ -183,6 +183,34 @@ async function foldAndSend(page: Page) {
   await page.getByRole('button', { name: 'タップして送信', exact: true }).click();
 }
 
+test('fullscreen flight preserves the paper, expands the excerpt and fits different screens', async ({ page }) => {
+  const state = await fixture(page);
+  const question = '大学生活について聞きたいことがあります。'.repeat(20);
+  await page.goto('?room=campus');
+  await page.getByLabel('聞いてみたいこと').fill(question);
+  await page.getByRole('button', { name: '紙飛行機にする', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '質問を送る' });
+  await expect(page.getByRole('heading', { name: 'あなたの質問を、飛ばそう。' })).toBeFocused();
+  await expect(page.locator('#flight-question')).not.toHaveText(question);
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  await expect(page.locator('#flight-question')).toHaveText(question);
+  await page.getByRole('button', { name: '閉じる', exact: true }).click();
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }, { width: 320, height: 568 }]) {
+    await page.setViewportSize(viewport);
+    const box = await dialog.boundingBox();
+    expect(box).toEqual({ x: 0, y: 0, ...viewport });
+    await expect(page.getByRole('button', { name: 'タップして送信' })).toBeInViewport();
+    const sendBox = (await page.getByRole('button', { name: 'タップして送信' }).boundingBox())!;
+    expect(sendBox.y + sendBox.height).toBeLessThanOrEqual(viewport.height);
+    expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/flight-${viewport.width}.png` });
+  }
+  await page.keyboard.press('Escape');
+  await expect(page.getByLabel('聞いてみたいこと')).toBeFocused();
+  await expect(page.getByLabel('聞いてみたいこと')).toHaveValue(question);
+  expect(state.posted).toHaveLength(0);
+});
+
 test('roomless and ambiguous links never choose another room', async ({ page }) => {
   await fixture(page);
   await page.goto('./'); await expect(page.getByRole('heading', { name: '主催者から案内されたリンクを開いてください' })).toBeVisible();
@@ -195,6 +223,7 @@ test('upward swipe submits once; short, sideways, cancelled and multiple pointer
   await page.goto('?room=campus'); await page.getByLabel('聞いてみたいこと').fill('スワイプで送る質問');
   await page.getByRole('button', { name: '紙飛行機にする' }).click();
   const runway = page.locator('.airplane-runway'); await expect(runway).toBeVisible();
+  await expect(page.getByRole('button', { name: 'タップして送信' })).toBeEnabled();
   const pointer = async (type: string, x: number, y: number, id = 1, primary = true) => runway.dispatchEvent(type, { pointerId: id, isPrimary: primary, pointerType: 'touch', clientX: x, clientY: y, button: 0, bubbles: true });
   for (const [dx,dy] of [[0,-30],[100,-90],[0,100]]) {
     await pointer('pointerdown',100,300); await pointer('pointermove',100+dx,300+dy); await pointer('pointerup',100+dx,300+dy);
