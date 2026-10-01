@@ -17,7 +17,6 @@ export function ShareControls({ eventId, title, operator = false }: { eventId: s
   const url = getRecruitmentUrl(eventId, source);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  useEffect(() => { setMessage(''); setCopied(false); setFallback(false); }, [url]);
 
   async function copy() {
     try {
@@ -40,7 +39,16 @@ export function ShareControls({ eventId, title, operator = false }: { eventId: s
   }
   return <div className="share-controls">
     {operator && <label className="field-label">リンクの用途
-      <select className="field-input" value={source} onChange={(e) => setSource(e.target.value as typeof source)}>
+      <select
+        className="field-input"
+        value={source}
+        onChange={(e) => {
+          setSource(e.target.value as typeof source);
+          setMessage('');
+          setCopied(false);
+          setFallback(false);
+        }}
+      >
         <option value="web">通常の共有・会場QR</option><option value="instagram">Instagram掲載用</option>
       </select>
     </label>}

@@ -64,6 +64,7 @@ export default function Home() {
     }
 
     readLocation();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Browser URL initialization is deferred until hydration for static export.
     setBooted(true);
     window.addEventListener('popstate', readLocation);
     return () => window.removeEventListener('popstate', readLocation);
@@ -119,7 +120,6 @@ export default function Home() {
 
       <main id="main-content" className="visitor-main">
         <div className="visitor-caption">
-          <span className="eyebrow">MEIGAKU QUESTION BOX</span>
           <span className="caption-line" />
         </div>
 
@@ -220,7 +220,7 @@ export default function Home() {
         <div className="help-copy">
           <h3>質問の送り方</h3>
           <p>
-            参加するルームを確認し、聞いてみたいこととテーマを入力します。「紙飛行機にする」を押して折り畳んだら、上へスワイプするか「タップして送信」で送信してください。
+            参加するルームを確認し、聞いてみたいこととテーマを入力します。「質問を送る」を押すと質問が届きます。
           </p>
           <h3>質問を見られる人</h3>
           <p>

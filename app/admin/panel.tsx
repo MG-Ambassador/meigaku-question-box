@@ -1,24 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Archive,
   BarChart3,
   FolderArchive,
+  LayoutGrid,
   LogOut,
   MessageCircle,
   Plus,
   Settings2,
   Share2,
-  Trash2,
   UserRound,
 } from 'lucide-react';
 import { getAdminEvents, ApiError, type EventItem } from '@/lib/api-client';
 import { ActionButton } from '@/components/question-box/action-button';
 import { AppSheet } from '@/components/question-box/app-sheet';
+import { ConfirmDialog } from '@/components/question-box/confirm-dialog';
 import { ShareControls } from '@/components/question-box/share-controls';
 import { EventSettings } from '@/components/question-box/event-settings';
 import { EventWorkspace, type AdminTab } from '@/components/question-box/event-workspace';
+import { ADMIN_HISTORY_CHANGE, historyIndex, initializeAdminHistory, writeAdminHistory } from '@/lib/admin-history';
+import { ComponentGallery } from '@/components/dev/component-gallery';
 
 interface PanelProps {
   token: string;
@@ -43,27 +45,84 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
   const [revision, setRevision] = useState(0);
   const [creating, setCreating] = useState(false);
   const [createRevision, setCreateRevision] = useState(0);
+  const [createDirty, setCreateDirty] = useState(false);
+  const [confirmDiscardCreate, setConfirmDiscardCreate] = useState(false);
+  const [createdNoticeEvent, setCreatedNoticeEvent] = useState<EventItem | null>(null);
   const [account, setAccount] = useState(false);
-  const [share, setShare] = useState(false);
+  const [shareTargetEvent, setShareTargetEvent] = useState<EventItem | null>(null);
   const [roomListOpen, setRoomListOpen] = useState(false);
   const [roomStatusTab, setRoomStatusTab] = useState<RoomStatusTab>('active');
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [pendingNav, setPendingNav] = useState<{ tab: AdminTab; eventId: string; historyDelta?: number } | null>(null);
+  const [pendingLogout, setPendingLogout] = useState(false);
+  const [pendingCreateRoom, setPendingCreateRoom] = useState(false);
+  const [devGalleryOpen, setDevGalleryOpen] = useState(false);
+  const saving = useRef(false);
+  const createSaving = useRef(false);
+  const acceptedIndex = useRef(0);
+  const restoringHistory = useRef(false);
+  const allowTraversal = useRef(false);
+  const blockedScroll = useRef(0);
+  const saveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const discardRef = useRef<(() => void) | null>(null);
 
   const event = events.find((item) => item.id === eventId);
 
   useEffect(() => {
-    function restore() {
+    function restore(e: PopStateEvent) {
+      if (restoringHistory.current) {
+        e.stopImmediatePropagation();
+        const delta = historyIndex() - acceptedIndex.current;
+        if (delta) window.history.go(-delta);
+        else {
+          restoringHistory.current = false;
+          requestAnimationFrame(() => window.scrollTo({ top: blockedScroll.current, behavior: 'instant' }));
+        }
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
       const requestedTab = params.get('view');
-      setTab(navigation.some((item) => item.id === requestedTab) ? (requestedTab as AdminTab) : 'questions');
+      const nextTab = navigation.some((item) => item.id === requestedTab) ? (requestedTab as AdminTab) : 'questions';
+      const nextEvent = params.get('event') || eventId;
+      const delta = historyIndex() - acceptedIndex.current;
+      if (!allowTraversal.current && (saving.current || createSaving.current || (tab === 'settings' && settingsDirty &&
+          (nextTab !== 'settings' || nextEvent !== eventId)))) {
+        // Traverse back to the original entry; pushState would destroy Forward history.
+        e.stopImmediatePropagation();
+        if (delta) {
+          blockedScroll.current = window.scrollY;
+          restoringHistory.current = true;
+          window.history.go(-delta);
+          if (!saving.current && !createSaving.current) setPendingNav({ tab: nextTab, eventId: nextEvent, historyDelta: delta });
+        }
+        return;
+      }
+      allowTraversal.current = false;
+      acceptedIndex.current = historyIndex();
+      setTab(nextTab);
       if (params.has('event')) setEventId(params.get('event') || '');
     }
-    restore();
-    window.addEventListener('popstate', restore);
-    return () => window.removeEventListener('popstate', restore);
+
+    window.addEventListener('popstate', restore, true);
+    return () => window.removeEventListener('popstate', restore, true);
+  }, [tab, settingsDirty, eventId]);
+
+  useEffect(() => {
+    initializeAdminHistory();
+    acceptedIndex.current = historyIndex();
+    const track = () => { acceptedIndex.current = historyIndex(); };
+    window.addEventListener(ADMIN_HISTORY_CHANGE, track);
+    const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get('view');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize from browser URL after hydration; subsequent updates subscribe to popstate.
+    setTab(navigation.some((item) => item.id === requestedTab) ? (requestedTab as AdminTab) : 'questions');
+    if (params.has('event')) setEventId(params.get('event') || '');
+    return () => window.removeEventListener(ADMIN_HISTORY_CHANGE, track);
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset request UI when the authenticated session or room-list revision changes.
     setLoading(true);
     setError('');
     getAdminEvents(token, controller.signal)
@@ -80,7 +139,7 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
         setEventId(selected);
         if (selected) {
           url.searchParams.set('event', selected);
-          window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+          writeAdminHistory(`${url.pathname}${url.search}`, true);
         }
       })
       .catch((e) => {
@@ -94,17 +153,85 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
     return () => controller.abort();
   }, [token, revision, onLogout]);
 
-  function navigate(nextTab: AdminTab, nextEvent = eventId) {
-    if (nextTab === tab && nextEvent === eventId) return;
+  function executeNav(nextTab: AdminTab, nextEvent = eventId) {
     const url = new URL(window.location.href);
     url.searchParams.set('view', nextTab);
     if (nextEvent) url.searchParams.set('event', nextEvent);
-    window.history.pushState(null, '', `${url.pathname}${url.search}`);
+    writeAdminHistory(`${url.pathname}${url.search}`);
     setTab(nextTab);
     setEventId(nextEvent);
   }
 
+  function navigate(nextTab: AdminTab, nextEvent = eventId, skipHistory = false) {
+    if (saving.current) return;
+    if (nextTab === tab && nextEvent === eventId) return;
+    if (tab === 'settings' && settingsDirty) {
+      setPendingNav({ tab: nextTab, eventId: nextEvent });
+      return;
+    }
+    if (skipHistory) {
+      setTab(nextTab);
+      setEventId(nextEvent);
+    } else {
+      executeNav(nextTab, nextEvent);
+    }
+  }
+
+  function finishNavigation(dest: { tab: AdminTab; eventId: string; historyDelta?: number }) {
+    if (dest.historyDelta) {
+      allowTraversal.current = true;
+      window.history.go(dest.historyDelta);
+    } else executeNav(dest.tab, dest.eventId);
+  }
+
+  async function handleSaveAndNavigate() {
+    if (!pendingNav) return;
+    const dest = pendingNav;
+    setPendingNav(null);
+    const saveFn = saveRef.current;
+    if (saveFn) {
+      const ok = await saveFn();
+      if (ok) {
+        setSettingsDirty(false);
+        finishNavigation(dest);
+      }
+    } else {
+      finishNavigation(dest);
+    }
+  }
+
+  function handleDiscardAndNavigate() {
+    if (!pendingNav) return;
+    discardRef.current?.();
+    setSettingsDirty(false);
+    const dest = pendingNav;
+    setPendingNav(null);
+    finishNavigation(dest);
+  }
+
+  function openCreateRoom() {
+    if (saving.current) return;
+    if (tab === 'settings' && settingsDirty) {
+      setPendingCreateRoom(true);
+      return;
+    }
+    setCreateDirty(false);
+    setCreateRevision((v) => v + 1);
+    setCreating(true);
+  }
+
+  function handleLogoutClick() {
+    if (saving.current) return;
+    setAccount(false);
+    if (tab === 'settings' && settingsDirty) {
+      setPendingLogout(true);
+    } else {
+      onLogout();
+    }
+  }
+
   function saved(item: EventItem) {
+    setSettingsDirty(false);
     setEvents((previous) =>
       previous.some((e) => e.id === item.id)
         ? previous.map((e) => (e.id === item.id ? item : e))
@@ -113,7 +240,9 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
     setEventId(item.id);
     if (creating) {
       setCreating(false);
+      setCreateDirty(false);
       navigate('questions', item.id);
+      setCreatedNoticeEvent(item);
     }
   }
 
@@ -194,7 +323,7 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
           </ActionButton>
           <ActionButton
             tone="quiet"
-            onClick={() => setShare(true)}
+            onClick={() => setShareTargetEvent(event || null)}
             disabled={!event || event.status === 'deleted'}
             aria-label="募集ページを共有"
           >
@@ -203,6 +332,16 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
           <ActionButton tone="quiet" onClick={() => setAccount(true)} aria-label="アカウント">
             <UserRound size={20} />
           </ActionButton>
+          {process.env.NODE_ENV !== 'production' && (
+            <ActionButton
+              tone="quiet"
+              onClick={() => setDevGalleryOpen(true)}
+              aria-label="UI部品ギャラリー（開発専用）"
+              title="UI部品ギャラリー"
+            >
+              <LayoutGrid size={20} />
+            </ActionButton>
+          )}
         </div>
       </div>
 
@@ -236,6 +375,47 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
         </div>
       )}
 
+      {createdNoticeEvent && (
+        <div
+          className="surface created-room-banner"
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap',
+            margin: '0 0 16px',
+            padding: '12px 16px',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)',
+            background: 'var(--secondary)',
+          }}
+        >
+          <div>
+            <strong>ルーム「{createdNoticeEvent.title}」を作成しました</strong>
+            <p className="muted" style={{ margin: '2px 0 0', fontSize: '.875rem' }}>
+              募集リンクを共有して、質問を集めましょう。
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <ActionButton
+              tone="primary"
+              onClick={() => setShareTargetEvent(createdNoticeEvent)}
+            >
+              <Share2 size={16} /> 募集リンクを共有
+            </ActionButton>
+            <ActionButton
+              tone="quiet"
+              onClick={() => setCreatedNoticeEvent(null)}
+              aria-label="案内を閉じる"
+            >
+              閉じる
+            </ActionButton>
+          </div>
+        </div>
+      )}
+
       {event && (
         <EventWorkspace
           key={`${token}:${event.id}`}
@@ -244,7 +424,11 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
           tab={tab}
           onSaved={saved}
           onAuthError={onLogout}
-          onNavigateTab={(t) => navigate(t)}
+          onNavigateTab={(t, skipHistory) => navigate(t, eventId, skipHistory)}
+          onDirtyChange={setSettingsDirty}
+          onBusyChange={(busy) => { saving.current = busy; }}
+          saveRef={saveRef}
+          discardRef={discardRef}
         />
       )}
 
@@ -260,10 +444,7 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
         <ActionButton
           className="create-event-button"
           tone="secondary"
-          onClick={() => {
-            setCreateRevision((v) => v + 1);
-            setCreating(true);
-          }}
+          onClick={openCreateRoom}
         >
           <Plus size={19} />
           新しいルームを作る
@@ -272,25 +453,55 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
 
       {/* Account Sheet */}
       <AppSheet open={account} onOpenChange={setAccount} title="アカウント" description={`${adminUser.displayName} でログイン中`}>
-        <ActionButton tone="secondary" onClick={onLogout}>
+        <ActionButton tone="secondary" onClick={handleLogoutClick}>
           <LogOut size={18} />
           ログアウト
         </ActionButton>
       </AppSheet>
 
       {/* Share Sheet */}
-      <AppSheet open={share} onOpenChange={setShare} title="質問箱を共有する" description={event?.title || ''}>
-        {event && <ShareControls key={event.id} eventId={event.id} title={event.title} operator />}
+      <AppSheet
+        open={!!shareTargetEvent}
+        onOpenChange={(open) => {
+          if (!open) setShareTargetEvent(null);
+        }}
+        title="質問箱を共有する"
+        description={shareTargetEvent?.title || ''}
+      >
+        {shareTargetEvent && (
+          <ShareControls
+            key={shareTargetEvent.id}
+            eventId={shareTargetEvent.id}
+            title={shareTargetEvent.title}
+            operator
+          />
+        )}
       </AppSheet>
 
       {/* Create Room Sheet */}
       <AppSheet
         open={creating}
-        onOpenChange={setCreating}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (createSaving.current) return;
+            if (createDirty) {
+              setConfirmDiscardCreate(true);
+            } else {
+              setCreating(false);
+            }
+          }
+        }}
         title="ルームを作る"
         description="保存すると、募集リンクを共有できます。"
       >
-        <EventSettings key={createRevision} token={token} onSaved={saved} onAuthError={onLogout} />
+        <EventSettings
+          key={createRevision}
+          token={token}
+          onSaved={saved}
+          onAuthError={onLogout}
+          onDirtyChange={setCreateDirty}
+          onBusyChange={(busy) => { createSaving.current = busy; }}
+        />
       </AppSheet>
 
       {/* Room Switcher / Management Sheet */}
@@ -365,9 +576,8 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
                     <ActionButton
                       tone="quiet"
                       onClick={() => {
-                        setEventId(item.id);
+                        setShareTargetEvent(item);
                         setRoomListOpen(false);
-                        setShare(true);
                       }}
                       aria-label={`${item.title}の共有を開く`}
                     >
@@ -402,8 +612,7 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
               className="full-width"
               onClick={() => {
                 setRoomListOpen(false);
-                setCreateRevision((v) => v + 1);
-                setCreating(true);
+                openCreateRoom();
               }}
             >
               <Plus size={18} />
@@ -412,6 +621,119 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
           </div>
         </div>
       </AppSheet>
+
+      {/* Unsaved Settings Confirmation Dialog for Navigation */}
+      <ConfirmDialog
+        open={!!pendingNav}
+        onOpenChange={(open) => {
+          if (!open) setPendingNav(null);
+        }}
+        title="未保存の変更があります"
+        description="ルーム設定の編集内容が保存されていません。保存して移動しますか、それとも破棄して移動しますか？"
+        action="保存して移動"
+        actionTone="primary"
+        onConfirm={() => void handleSaveAndNavigate()}
+        secondaryAction="破棄して移動"
+        onSecondaryAction={handleDiscardAndNavigate}
+        cancelText="移動をキャンセル"
+      />
+
+      {/* Unsaved Confirmation for Discarding Room Creation */}
+      <ConfirmDialog
+        open={confirmDiscardCreate}
+        onOpenChange={setConfirmDiscardCreate}
+        title="未保存の変更があります"
+        description="新しいルームの入力内容が破棄されます。よろしいですか？"
+        action="破棄して閉じる"
+        actionTone="danger"
+        onConfirm={() => {
+          if (createSaving.current) return;
+          setConfirmDiscardCreate(false);
+          setCreateDirty(false);
+          setCreating(false);
+        }}
+        cancelText="入力を続ける"
+      />
+
+      {/* Unsaved Settings Confirmation Dialog for Logout */}
+      <ConfirmDialog
+        open={pendingLogout}
+        onOpenChange={(open) => {
+          if (!open) setPendingLogout(false);
+        }}
+        title="未保存の変更があります"
+        description="ルーム設定の編集内容が保存されていません。保存してログアウトしますか、それとも破棄してログアウトしますか？"
+        action="保存してログアウト"
+        actionTone="primary"
+        onConfirm={async () => {
+          setPendingLogout(false);
+          const saveFn = saveRef.current;
+          if (saveFn) {
+            const ok = await saveFn();
+            if (ok) {
+              setSettingsDirty(false);
+              onLogout();
+            }
+          } else {
+            onLogout();
+          }
+        }}
+        secondaryAction="破棄してログアウト"
+        onSecondaryAction={() => {
+          setPendingLogout(false);
+          discardRef.current?.();
+          setSettingsDirty(false);
+          onLogout();
+        }}
+        cancelText="ログアウトをキャンセル"
+      />
+
+      {/* Unsaved Settings Confirmation Dialog for Create Room */}
+      <ConfirmDialog
+        open={pendingCreateRoom}
+        onOpenChange={(open) => {
+          if (!open) setPendingCreateRoom(false);
+        }}
+        title="未保存の変更があります"
+        description="ルーム設定の編集内容が保存されていません。保存して新しいルームを作成しますか、それとも破棄して作成しますか？"
+        action="保存して作成"
+        actionTone="primary"
+        onConfirm={async () => {
+          setPendingCreateRoom(false);
+          const saveFn = saveRef.current;
+          if (saveFn) {
+            const ok = await saveFn();
+            if (ok) {
+              setSettingsDirty(false);
+              setCreateDirty(false);
+              setCreateRevision((v) => v + 1);
+              setCreating(true);
+            }
+          }
+        }}
+        secondaryAction="破棄して作成"
+        onSecondaryAction={() => {
+          setPendingCreateRoom(false);
+          discardRef.current?.();
+          setSettingsDirty(false);
+          setCreateDirty(false);
+          setCreateRevision((v) => v + 1);
+          setCreating(true);
+        }}
+        cancelText="作成をキャンセル"
+      />
+
+      {/* Dev-only Component Gallery Sheet */}
+      {process.env.NODE_ENV !== 'production' && (
+        <AppSheet
+          open={devGalleryOpen}
+          onOpenChange={setDevGalleryOpen}
+          title="UI部品ギャラリー（開発専用）"
+          description="13種類の基本コンポーネント全状態の確認画面"
+        >
+          <ComponentGallery />
+        </AppSheet>
+      )}
     </main>
   );
 }

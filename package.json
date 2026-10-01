@@ -20,7 +20,8 @@
     "stats:rebuild": "node scripts/rebuild-event-stats.mjs --dry-run",
     "db:generate": "drizzle-kit generate",
     "test:ui-state": "node --test tests/ui-state.test.mjs",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "test:ui-gallery": "playwright test --config tests/gallery/playwright.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

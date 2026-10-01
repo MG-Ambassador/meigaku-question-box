@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   ApiError,
   changeAdminEventLifecycle,
@@ -19,11 +19,19 @@ export function EventSettings({
   token,
   onSaved,
   onAuthError,
+  onDirtyChange,
+  onBusyChange,
+  saveRef,
+  discardRef,
 }: {
   event?: EventItem;
   token: string;
   onSaved: (event: EventItem) => void;
   onAuthError: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
+  saveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  discardRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const [baseline, setBaseline] = useState(event);
   const [title, setTitle] = useState(event?.title || '');
@@ -31,6 +39,8 @@ export function EventSettings({
   const [accepting, setAccepting] = useState(event ? !!event.open : true);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const titleErrorId = useId();
   const creationId = useRef<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -41,9 +51,66 @@ export function EventSettings({
   const isDeleted = baseline?.status === 'deleted';
   const isArchived = baseline?.status === 'archived';
 
-  async function save() {
-    if (lock.current || conflict || isDeleted) return;
+  const hasUnsavedChanges = baseline
+    ? (title !== baseline.title || date !== (baseline.date || '') || accepting !== !!baseline.open)
+    : !!(title.trim() || date.trim() || !accepting);
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      onDirtyChange?.(false);
+    };
+  }, [onDirtyChange]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges && !busy) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges, busy]);
+
+  function discard() {
+    if (baseline) {
+      setTitle(baseline.title);
+      setDate(baseline.date || '');
+      setAccepting(!!baseline.open);
+      setError('');
+      setMessage('');
+      setConflict(null);
+    } else {
+      setTitle('');
+      setDate('');
+      setAccepting(true);
+      setError('');
+      setMessage('');
+    }
+  }
+
+  useEffect(() => {
+    if (discardRef) {
+      discardRef.current = discard;
+      return () => {
+        discardRef.current = null;
+      };
+    }
+  });
+
+  const pendingSaveResolve = useRef<((value: boolean) => void) | null>(null);
+
+  async function save(): Promise<boolean> {
+    if (lock.current || conflict || isDeleted) return false;
+    if (!title.trim()) {
+      setError('ルーム名を入力してください。');
+      titleInput.current?.focus();
+      return false;
+    }
     lock.current = true;
+    onBusyChange?.(true);
     setBusy(true);
     setError('');
     setMessage('');
@@ -73,10 +140,11 @@ export function EventSettings({
       setAccepting(!!saved.open);
       setMessage('ルームを保存しました。');
       onSaved(saved);
+      return true;
     } catch (e) {
       if (e instanceof ApiError && (e.statusCode === 401 || e.statusCode === 403)) {
         onAuthError();
-        return;
+        return false;
       }
       if (e instanceof ApiError && e.code === 'VERSION_CONFLICT' && baseline) {
         setError('別の担当者が変更しました。入力内容は残しています。最新情報と比較してください。');
@@ -88,15 +156,61 @@ export function EventSettings({
       } else {
         setError(e instanceof Error ? e.message : '保存できませんでした。入力内容は残しています。');
       }
+      return false;
     } finally {
       lock.current = false;
+      onBusyChange?.(false);
       setBusy(false);
     }
   }
 
+  const stopConfirmed = useRef(false);
+
+  async function requestSave(): Promise<boolean> {
+    if (lock.current || conflict || isDeleted) return false;
+    if (!title.trim()) {
+      setError('ルーム名を入力してください。');
+      titleInput.current?.focus();
+      return false;
+    }
+    if (baseline?.open && !accepting) {
+      stopConfirmed.current = false;
+      return new Promise<boolean>((resolve) => {
+        pendingSaveResolve.current = resolve;
+        setConfirmStop(true);
+      });
+    }
+    return await save();
+  }
+
+  async function handleConfirmStop() {
+    stopConfirmed.current = true;
+    setConfirmStop(false);
+    const ok = await save();
+    pendingSaveResolve.current?.(ok);
+    pendingSaveResolve.current = null;
+  }
+
+  function handleCancelStop() {
+    if (stopConfirmed.current) return;
+    setConfirmStop(false);
+    pendingSaveResolve.current?.(false);
+    pendingSaveResolve.current = null;
+  }
+
+  useEffect(() => {
+    if (saveRef) {
+      saveRef.current = requestSave;
+      return () => {
+        saveRef.current = null;
+      };
+    }
+  });
+
   async function executeLifecycle(action: 'archive' | 'trash' | 'restore') {
     if (!baseline || lock.current) return;
     lock.current = true;
+    onBusyChange?.(true);
     setBusy(true);
     setError('');
     setMessage('');
@@ -127,6 +241,7 @@ export function EventSettings({
       setError(e instanceof Error ? e.message : '状態の変更に失敗しました。');
     } finally {
       lock.current = false;
+      onBusyChange?.(false);
       setBusy(false);
       setConfirmLifecycle(null);
     }
@@ -140,8 +255,7 @@ export function EventSettings({
         className="settings-form surface"
         onSubmit={(e) => {
           e.preventDefault();
-          if (baseline?.open && !accepting) setConfirmStop(true);
-          else void save();
+          void requestSave();
         }}
       >
         <div className="section-heading">
@@ -158,11 +272,14 @@ export function EventSettings({
         <label className="field-label">
           ルーム名
           <input
+            ref={titleInput}
+            aria-invalid={!!error && !title.trim() || undefined}
+            aria-describedby={error && !title.trim() ? titleErrorId : undefined}
             className="field-input"
             required
             maxLength={100}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { setTitle(e.target.value); if (!title.trim()) setError(''); }}
             disabled={busy || isDeleted}
             placeholder="オープンキャンパス"
           />
@@ -183,7 +300,7 @@ export function EventSettings({
             <strong>質問を受け付ける</strong>
             <small>
               {accepting ? '募集ページから質問を送れます' : '募集ページに受付終了と表示します'}
-              （変更は保存すると反映されます）
+              （{baseline ? `公開中：${baseline.open ? '受付中' : '受付終了'}` : '未作成'} · 変更は保存すると反映されます）
             </small>
           </span>
           <Switch
@@ -196,7 +313,7 @@ export function EventSettings({
         </label>
 
         {error && (
-          <p className="notice notice-error" role="alert">
+          <p id={titleErrorId} className="notice notice-error" role="alert">
             {error}
           </p>
         )}
@@ -243,9 +360,20 @@ export function EventSettings({
           </div>
         )}
         {!isDeleted && (
-          <ActionButton type="submit" busy={busy} disabled={!title.trim() || !!conflict}>
-            {busy ? '保存中…' : 'ルームを保存'}
-          </ActionButton>
+          <div className="button-row" style={{ alignItems: 'center', gap: '12px' }}>
+            <ActionButton
+              type="submit"
+              busy={busy}
+              disabled={!hasUnsavedChanges || !title.trim() || !!conflict}
+            >
+              {busy ? '保存中…' : 'ルームを保存'}
+            </ActionButton>
+            {hasUnsavedChanges && (
+              <span className="unsaved-badge" role="status">
+                未保存の変更があります
+              </span>
+            )}
+          </div>
         )}
         <p role="status" className="muted">
           {message}
@@ -329,11 +457,14 @@ export function EventSettings({
 
       <ConfirmDialog
         open={confirmStop}
-        onOpenChange={setConfirmStop}
+        onOpenChange={(open) => {
+          if (!open) handleCancelStop();
+        }}
         title="質問の受付を終了しますか？"
         description={`「${baseline?.title || title}」への新しい質問を停止します。保存済みの質問は引き続き閲覧できます。`}
         action="受付を終了して保存"
-        onConfirm={() => void save()}
+        cancelText="キャンセル"
+        onConfirm={() => void handleConfirmStop()}
       />
 
       <ConfirmDialog

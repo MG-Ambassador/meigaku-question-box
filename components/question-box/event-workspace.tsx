@@ -1,15 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  ArrowRight,
   ArrowUp,
   ChevronRight,
-  Filter,
   MessageCircle,
   RefreshCw,
   RotateCcw,
+  SlidersHorizontal,
   Star,
   X,
 } from 'lucide-react';
@@ -25,6 +24,8 @@ import { appendReport, newQuestionCount } from '@/lib/report-state';
 import { useForegroundPoll } from '@/hooks/use-foreground-poll';
 import { CATEGORIES } from '@/lib/question-draft';
 import { ActionButton } from './action-button';
+import { AppSheet } from './app-sheet';
+import { writeAdminHistory } from '@/lib/admin-history';
 import { EventSettings } from './event-settings';
 
 export type AdminTab = 'questions' | 'analysis' | 'settings';
@@ -38,13 +39,21 @@ export function EventWorkspace({
   onSaved,
   onAuthError,
   onNavigateTab,
+  onDirtyChange,
+  onBusyChange,
+  saveRef,
+  discardRef,
 }: {
   event: EventItem;
   token: string;
   tab: AdminTab;
   onSaved: (event: EventItem) => void;
   onAuthError: () => void;
-  onNavigateTab?: (tab: AdminTab) => void;
+  onNavigateTab?: (tab: AdminTab, skipHistory?: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
+  saveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  discardRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const [report, setReport] = useState<ReportData | null>(null);
   const snapshot = useRef<ReportData | null>(null);
@@ -62,15 +71,49 @@ export function EventWorkspace({
   const [day, setDay] = useState('');
   const [source, setSource] = useState('');
   const [fromInsights, setFromInsights] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+
+  // Mobile filter draft state
+  const [draftFavorite, setDraftFavorite] = useState<'all' | 'favorite'>('all');
+  const [draftSort, setDraftSort] = useState<'newest' | 'oldest' | 'theme'>('newest');
+
+  function openFilterSheet() {
+    setDraftFavorite(favorite);
+    setDraftSort(sort);
+    setFilterSheetOpen(true);
+  }
 
   // Favorites tracking
-  const [undoRemovedId, setUndoRemovedId] = useState<string | null>(null);
   const pendingFavorites = useRef<Set<string>>(new Set());
+  const insightsScrollY = useRef(0);
 
   const manual = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const alive = useRef(true);
   const heading = useRef<HTMLHeadingElement>(null);
+
+  const chipsList = ['', ...CATEGORIES];
+  function handleThemeKeyDown(e: React.KeyboardEvent, index: number) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIdx = (index + 1) % chipsList.length;
+      const nextCat = chipsList[nextIdx];
+      setCategory(nextCat);
+      updateQueryUrl({ category: nextCat });
+      requestAnimationFrame(() => {
+        document.getElementById(`filter-chip-${nextIdx}`)?.focus();
+      });
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIdx = (index - 1 + chipsList.length) % chipsList.length;
+      const prevCat = chipsList[prevIdx];
+      setCategory(prevCat);
+      updateQueryUrl({ category: prevCat });
+      requestAnimationFrame(() => {
+        document.getElementById(`filter-chip-${prevIdx}`)?.focus();
+      });
+    }
+  }
 
   // Read URL query parameters on mount & history navigation
   useEffect(() => {
@@ -89,6 +132,13 @@ export function EventWorkspace({
       setDay(d);
       setSource(src);
       setFromInsights(fi);
+
+      const requestedTab = params.get('view');
+      if (requestedTab === 'analysis' && insightsScrollY.current > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: insightsScrollY.current, behavior: 'instant' });
+        });
+      }
     }
     syncFromUrl();
     window.addEventListener('popstate', syncFromUrl);
@@ -138,7 +188,7 @@ export function EventWorkspace({
     if (newFi) url.searchParams.set('from_insights', '1');
     else url.searchParams.delete('from_insights');
 
-    window.history.pushState(null, '', `${url.pathname}${url.search}`);
+    writeAdminHistory(`${url.pathname}${url.search}`);
   }
 
   // Poll for background updates
@@ -184,69 +234,73 @@ export function EventWorkspace({
     `${event.id}:${token}:${category}:${sort}:${favorite}:${day}:${source}`
   );
 
-  async function load(mode: 'refresh' | 'more') {
-    if (manual.current) {
-      if (mode === 'more') return;
-      // refresh時は進行中のリクエストを明示的にキャンセルして中断
-      manual.current.abort();
-      manual.current = null;
-    }
-    if (mode === 'more' && !snapshot.current?.nextCursor) return;
+  const load = useCallback(
+    async (mode: 'refresh' | 'more', focusHeading = false) => {
+      if (manual.current) {
+        if (mode === 'more') return;
+        // refresh時は進行中のリクエストを明示的にキャンセルして中断
+        manual.current.abort();
+        manual.current = null;
+      }
+      if (mode === 'more' && !snapshot.current?.nextCursor) return;
 
-    const controller = new AbortController();
-    manual.current = controller;
-    const requestGen = ++generation.current;
-    setBusy(mode);
-    setPageError('');
+      const controller = new AbortController();
+      manual.current = controller;
+      const requestGen = ++generation.current;
+      setBusy(mode);
+      setPageError('');
 
-    try {
-      const result = await getAdminReport(
-        token,
-        event.id,
-        {
-          pageSize: 50,
-          cursor: mode === 'more' ? snapshot.current?.nextCursor : null,
-          category: category || undefined,
-          sort,
-          favorite: favorite === 'favorite' ? 'favorite' : undefined,
-          day: day || undefined,
-          source: (source as 'web' | 'instagram') || undefined,
-        },
-        null,
-        controller.signal
-      );
-      if (controller.signal.aborted || !alive.current || requestGen !== generation.current) return;
-      const next = mode === 'more' && snapshot.current ? appendReport(snapshot.current, result) : result;
-      snapshot.current = next;
-      setReport(next);
-      setError('');
-      setLastSuccess(Date.now());
-      if (mode === 'refresh') {
-        setLatest(result);
-        setExpired(false);
-        setUndoRemovedId(null);
-        requestAnimationFrame(() => {
-          heading.current?.focus();
-          heading.current?.scrollIntoView({ block: 'start' });
-        });
+      try {
+        const result = await getAdminReport(
+          token,
+          event.id,
+          {
+            pageSize: 50,
+            cursor: mode === 'more' ? snapshot.current?.nextCursor : null,
+            category: category || undefined,
+            sort,
+            favorite: favorite === 'favorite' ? 'favorite' : undefined,
+            day: day || undefined,
+            source: (source as 'web' | 'instagram') || undefined,
+          },
+          null,
+          controller.signal
+        );
+        if (controller.signal.aborted || !alive.current || requestGen !== generation.current) return;
+        const next = mode === 'more' && snapshot.current ? appendReport(snapshot.current, result) : result;
+        snapshot.current = next;
+        setReport(next);
+        setError('');
+        setLastSuccess(Date.now());
+        if (mode === 'refresh') {
+          setLatest(result);
+          setExpired(false);
+          if (focusHeading) {
+            requestAnimationFrame(() => {
+              heading.current?.focus();
+              heading.current?.scrollIntoView({ block: 'start' });
+            });
+          }
+        }
+      } catch (e) {
+        if (controller.signal.aborted || !alive.current || requestGen !== generation.current) return;
+        if (e instanceof ApiError && [401, 403].includes(e.statusCode)) {
+          onAuthError();
+          return;
+        }
+        if (e instanceof ApiError && ['CURSOR_EXPIRED', 'INVALID_CURSOR'].includes(e.code)) {
+          setExpired(true);
+          setPageError('一覧の取得期限が切れました。読んでいる質問を残しています。一覧を更新すると続きを取得できます。');
+        } else {
+          setPageError('読み込めませんでした。通信状況を確認して、もう一度お試しください。');
+        }
+      } finally {
+        if (manual.current === controller) manual.current = null;
+        if (alive.current && requestGen === generation.current) setBusy(null);
       }
-    } catch (e) {
-      if (controller.signal.aborted || !alive.current || requestGen !== generation.current) return;
-      if (e instanceof ApiError && [401, 403].includes(e.statusCode)) {
-        onAuthError();
-        return;
-      }
-      if (e instanceof ApiError && ['CURSOR_EXPIRED', 'INVALID_CURSOR'].includes(e.code)) {
-        setExpired(true);
-        setPageError('一覧の取得期限が切れました。読んでいる質問を残しています。一覧を更新すると続きを取得できます。');
-      } else {
-        setPageError('読み込めませんでした。通信状況を確認して、もう一度お試しください。');
-      }
-    } finally {
-      if (manual.current === controller) manual.current = null;
-      if (alive.current && requestGen === generation.current) setBusy(null);
-    }
-  }
+    },
+    [token, event.id, category, sort, favorite, day, source, onAuthError]
+  );
 
   // Trigger reload when filter conditions change
   useEffect(() => {
@@ -256,10 +310,11 @@ export function EventWorkspace({
     }
     generation.current += 1;
     snapshot.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Invalidate the old external API snapshot before loading new filter results.
     setReport(null);
     setLatest(null);
     void load('refresh');
-  }, [category, sort, favorite, day, source]);
+  }, [load]);
 
   async function handleToggleFavorite(q: QuestionRow) {
     if (pendingFavorites.current.has(q.id)) return;
@@ -280,10 +335,6 @@ export function EventWorkspace({
         ...snapshot.current,
         rows: snapshot.current.rows.map((row) => (row.id === q.id ? { ...row, isFavorite: nextVal } : row)),
       };
-    }
-
-    if (favorite === 'favorite' && !nextVal) {
-      setUndoRemovedId(q.id);
     }
 
     try {
@@ -309,21 +360,23 @@ export function EventWorkspace({
     }
   }
 
-  function clearAllFilters() {
+  function clearAllFilters(writeHistory = true) {
     setCategory('');
     setSort('newest');
     setFavorite('all');
     setDay('');
     setSource('');
     setFromInsights(false);
-    updateQueryUrl({ category: '', sort: 'newest', favorite: 'all', day: '', source: '', from_insights: false });
+    if (writeHistory) updateQueryUrl({ category: '', sort: 'newest', favorite: 'all', day: '', source: '', from_insights: false });
   }
 
   function filterFromInsight(newFilters: { category?: string; day?: string; source?: string }) {
+    insightsScrollY.current = window.scrollY;
     setCategory(newFilters.category || '');
     setDay(newFilters.day || '');
     setSource(newFilters.source || '');
     setFavorite('all');
+    setSort('newest');
     setFromInsights(true);
 
     const url = new URL(window.location.href);
@@ -335,19 +388,32 @@ export function EventWorkspace({
     if (newFilters.source) url.searchParams.set('source', newFilters.source);
     else url.searchParams.delete('source');
     url.searchParams.delete('favorite');
+    url.searchParams.delete('sort');
     url.searchParams.set('from_insights', '1');
-    window.history.pushState(null, '', `${url.pathname}${url.search}`);
+    writeAdminHistory(`${url.pathname}${url.search}`);
 
-    if (onNavigateTab) onNavigateTab('questions');
+    if (onNavigateTab) onNavigateTab('questions', true);
+    requestAnimationFrame(() => {
+      heading.current?.focus();
+    });
   }
 
   function returnToInsights() {
     setFromInsights(false);
-    clearAllFilters();
+    clearAllFilters(false);
     const url = new URL(window.location.href);
     url.searchParams.set('view', 'analysis');
-    window.history.pushState(null, '', `${url.pathname}${url.search}`);
-    if (onNavigateTab) onNavigateTab('analysis');
+    url.searchParams.delete('favorite');
+    url.searchParams.delete('sort');
+    url.searchParams.delete('category');
+    url.searchParams.delete('day');
+    url.searchParams.delete('source');
+    url.searchParams.delete('from_insights');
+    writeAdminHistory(`${url.pathname}${url.search}`);
+    if (onNavigateTab) onNavigateTab('analysis', true);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: insightsScrollY.current, behavior: 'instant' });
+    });
   }
 
   const favoritesChanged = favorite === 'favorite' && report && latest && report.favoriteRevision !== latest.favoriteRevision;
@@ -365,6 +431,58 @@ export function EventWorkspace({
         })).filter((group) => group.rows.length > 0)
       : null;
 
+  function renderQuestionCard(q: QuestionRow) {
+    const isUndoState = favorite === 'favorite' && !q.isFavorite;
+    return (
+      <article
+        className={`question-row ${isUndoState ? 'is-unfavorited' : ''}`}
+        key={q.id}
+        data-category={q.category}
+      >
+        {isUndoState && (
+          <div className="undo-inline-notice" role="status">
+            <span>自分のお気に入りを解除しました（次回の更新で一覧から除外されます）</span>
+            <ActionButton tone="quiet" onClick={() => void handleToggleFavorite(q)}>
+              元に戻す
+            </ActionButton>
+          </div>
+        )}
+        <div className="question-meta">
+          <span className="theme-badge" data-category={q.category}>
+            {q.category}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <time dateTime={new Date(q.created_at).toISOString()}>
+              {new Date(q.created_at).toLocaleString('ja-JP', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Tokyo',
+              })}
+            </time>
+            <button
+              type="button"
+              className="star-button"
+              aria-pressed={q.isFavorite}
+              aria-label={q.isFavorite ? '自分のお気に入りから解除' : '自分のお気に入りに追加'}
+              onClick={() => void handleToggleFavorite(q)}
+            >
+              <Star
+                size={20}
+                strokeWidth={q.isFavorite ? 0 : 2}
+                fill={q.isFavorite ? 'currentColor' : 'none'}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
+        <p className="question-body">{q.body}</p>
+        <p className="question-source">{q.source === 'instagram' ? 'Instagramリンク経由' : 'Webから'} · 匿名</p>
+      </article>
+    );
+  }
+
   return (
     <div>
       <section hidden={tab !== 'questions'} aria-label="質問一覧" className="questions-workspace">
@@ -378,12 +496,11 @@ export function EventWorkspace({
 
         <div className="workspace-heading">
           <div>
-            <p className="eyebrow">QUESTIONS</p>
             <h1 ref={heading} tabIndex={-1}>
               届いた質問 <span className="count-tag">{report?.filteredTotal ?? report?.total ?? '—'}</span>
             </h1>
           </div>
-          <ActionButton tone="quiet" disabled={!!busy} onClick={() => void load('refresh')} aria-label="一覧を更新">
+          <ActionButton tone="quiet" disabled={!!busy} onClick={() => void load('refresh', true)} aria-label="一覧を更新">
             <RefreshCw size={19} />
           </ActionButton>
         </div>
@@ -404,32 +521,56 @@ export function EventWorkspace({
         {/* Filter Bar */}
         <div className="filter-bar" aria-label="絞り込みと並び替え">
           <div className="filter-chips" role="radiogroup" aria-label="テーマで絞り込み">
-            <button
-              type="button"
-              className={`filter-chip ${category === '' ? 'is-active' : ''}`}
-              onClick={() => {
-                setCategory('');
-                updateQueryUrl({ category: '' });
-              }}
-            >
-              すべて
-            </button>
-            {CATEGORIES.map((cat) => (
-              <button
-                type="button"
-                key={cat}
-                className={`filter-chip ${category === cat ? 'is-active' : ''}`}
-                onClick={() => {
-                  setCategory(cat);
-                  updateQueryUrl({ category: cat });
-                }}
-              >
-                {cat}
-              </button>
-            ))}
+            {chipsList.map((cat, idx) => {
+              const isSelected = category === cat;
+              return (
+                <button
+                  key={cat || 'all'}
+                  id={`filter-chip-${idx}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  tabIndex={isSelected ? 0 : -1}
+                  className={`filter-chip ${isSelected ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setCategory(cat);
+                    updateQueryUrl({ category: cat });
+                  }}
+                  onKeyDown={(e) => handleThemeKeyDown(e, idx)}
+                >
+                  {cat || 'すべて'}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="filter-controls-row">
+          {/* Mobile Sheet Trigger */}
+          <div className="filter-controls-row mobile-only">
+            <ActionButton
+              type="button"
+              tone="secondary"
+              className="mobile-filter-trigger"
+              onClick={openFilterSheet}
+              aria-label="絞り込み・並び順"
+            >
+              <SlidersHorizontal size={16} aria-hidden="true" />
+              <span>絞り込み・並び順</span>
+              {(favorite === 'favorite' || sort !== 'newest') && (
+                <span className="filter-badge">
+                  {(favorite === 'favorite' ? 1 : 0) + (sort !== 'newest' ? 1 : 0)}
+                </span>
+              )}
+            </ActionButton>
+
+            {hasActiveFilter && (
+              <ActionButton tone="quiet" onClick={() => clearAllFilters()} aria-label="絞り込み条件をリセット">
+                <RotateCcw size={16} /> 条件を解除
+              </ActionButton>
+            )}
+          </div>
+
+          {/* Desktop Controls Row */}
+          <div className="filter-controls-row desktop-only">
             <div className="filter-select-group">
               <label htmlFor="filter-view-select" className="sr-only">
                 表示条件
@@ -468,25 +609,102 @@ export function EventWorkspace({
             </div>
 
             {hasActiveFilter && (
-              <ActionButton tone="quiet" onClick={clearAllFilters} aria-label="絞り込み条件をリセット">
+              <ActionButton tone="quiet" onClick={() => clearAllFilters()} aria-label="絞り込み条件をリセット">
                 <RotateCcw size={16} /> 条件を解除
               </ActionButton>
             )}
           </div>
         </div>
 
+        {/* Mobile Filter Sheet */}
+        <AppSheet
+          open={filterSheetOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDraftFavorite(favorite);
+              setDraftSort(sort);
+            }
+            setFilterSheetOpen(open);
+          }}
+          title="絞り込み・並び順"
+          description="お気に入りや並び順を設定します。"
+        >
+          <div className="filter-sheet-body">
+            <div className="field-group">
+              <label htmlFor="mobile-filter-view-select" className="field-label">
+                表示条件
+              </label>
+              <select
+                id="mobile-filter-view-select"
+                className="field-input"
+                value={draftFavorite}
+                onChange={(e) => setDraftFavorite(e.target.value as 'all' | 'favorite')}
+              >
+                <option value="all">すべて表示</option>
+                <option value="favorite">★ 自分のお気に入り</option>
+              </select>
+            </div>
+
+            <div className="field-group" style={{ marginTop: '16px' }}>
+              <label htmlFor="mobile-filter-sort-select" className="field-label">
+                並び順
+              </label>
+              <select
+                id="mobile-filter-sort-select"
+                className="field-input"
+                value={draftSort}
+                onChange={(e) => setDraftSort(e.target.value as 'newest' | 'oldest' | 'theme')}
+              >
+                <option value="newest">新しい順</option>
+                <option value="oldest">古い順</option>
+                <option value="theme">テーマ順</option>
+              </select>
+            </div>
+
+            <div className="button-row" style={{ marginTop: '24px', justifyContent: 'space-between' }}>
+              {hasActiveFilter && (
+                <ActionButton
+                  type="button"
+                  tone="quiet"
+                  onClick={() => {
+                    clearAllFilters();
+                    setDraftFavorite('all');
+                    setDraftSort('newest');
+                    setFilterSheetOpen(false);
+                  }}
+                >
+                  条件を解除
+                </ActionButton>
+              )}
+              <ActionButton
+                type="button"
+                tone="primary"
+                className={hasActiveFilter ? '' : 'full-width'}
+                onClick={() => {
+                  setFavorite(draftFavorite);
+                  setSort(draftSort);
+                  updateQueryUrl({ favorite: draftFavorite, sort: draftSort });
+                  setFilterSheetOpen(false);
+                }}
+              >
+                完了
+              </ActionButton>
+            </div>
+          </div>
+        </AppSheet>
+
         {hasActiveFilter && (
           <div className="filter-indicator" role="status">
             <span>
               条件適用中:
               {category && ` [テーマ: ${category}]`}
-              {favorite === 'favorite' && ' [お気に入りのみ]'}
+              {favorite === 'favorite' && ' [自分のお気に入り]'}
               {sort !== 'newest' && ` [並び順: ${sort === 'oldest' ? '古い順' : 'テーマ順'}]`}
               {day && ` [日付: ${day}]`}
               {source && ` [流入元: ${source === 'instagram' ? 'Instagram' : 'Web'}]`}
               {report && ` · ${report.filteredTotal ?? report.rows.length}件`}
             </span>
-            <ActionButton tone="quiet" onClick={clearAllFilters}>
+            <ActionButton tone="quiet" onClick={() => clearAllFilters()} aria-label="条件を解除">
               <X size={16} /> 解除
             </ActionButton>
           </div>
@@ -498,7 +716,7 @@ export function EventWorkspace({
               className="new-questions-button"
               busy={busy === 'refresh'}
               disabled={!!busy}
-              onClick={() => void load('refresh')}
+              onClick={() => void load('refresh', true)}
             >
               <ArrowUp size={17} />
               {favoritesChanged ? 'お気に入りが変更されました · 一覧を更新' : `新しい質問が${newCount}件 · 表示する`}
@@ -529,7 +747,7 @@ export function EventWorkspace({
             </p>
             {hasActiveFilter && (
               <div style={{ marginTop: '16px' }}>
-                <ActionButton tone="secondary" onClick={clearAllFilters}>
+                <ActionButton tone="secondary" onClick={() => clearAllFilters()}>
                   条件を解除して全件を見る
                 </ActionButton>
               </div>
@@ -547,97 +765,14 @@ export function EventWorkspace({
                   <span className="count-tag">{group.rows.length}件</span>
                 </div>
                 <div className="question-list">
-                  {group.rows.map((q) => (
-                    <article className="question-row" key={q.id} data-category={q.category}>
-                      <div className="question-meta">
-                        <span className="theme-badge" data-category={q.category}>
-                          {q.category}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <time dateTime={new Date(q.created_at).toISOString()}>
-                            {new Date(q.created_at).toLocaleString('ja-JP', {
-                              month: 'numeric',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              timeZone: 'Asia/Tokyo',
-                            })}
-                          </time>
-                          <button
-                            type="button"
-                            className="star-button"
-                            aria-pressed={q.isFavorite}
-                            aria-label={q.isFavorite ? 'お気に入りから解除' : 'お気に入りに追加'}
-                            onClick={() => void handleToggleFavorite(q)}
-                          >
-                            <Star
-                              size={20}
-                              strokeWidth={q.isFavorite ? 0 : 2}
-                              fill={q.isFavorite ? 'currentColor' : 'none'}
-                              aria-hidden="true"
-                            />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="question-body">{q.body}</p>
-                      <p className="question-source">{q.source === 'instagram' ? 'Instagramリンク経由' : 'Webから'} · 匿名</p>
-                    </article>
-                  ))}
+                  {group.rows.map((q) => renderQuestionCard(q))}
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="question-list">
-            {report?.rows.map((q) => {
-              const isUndoState = undoRemovedId === q.id && !q.isFavorite;
-              if (isUndoState) {
-                return (
-                  <div key={q.id} className="undo-box" role="status">
-                    <span>お気に入りを解除しました（次回の更新で一覧から除外されます）</span>
-                    <ActionButton tone="quiet" onClick={() => void handleToggleFavorite(q)}>
-                      元に戻す
-                    </ActionButton>
-                  </div>
-                );
-              }
-              return (
-                <article className="question-row" key={q.id} data-category={q.category}>
-                  <div className="question-meta">
-                    <span className="theme-badge" data-category={q.category}>
-                      {q.category}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <time dateTime={new Date(q.created_at).toISOString()}>
-                        {new Date(q.created_at).toLocaleString('ja-JP', {
-                          month: 'numeric',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          timeZone: 'Asia/Tokyo',
-                        })}
-                      </time>
-                      <button
-                        type="button"
-                        className="star-button"
-                        aria-pressed={q.isFavorite}
-                        aria-label={q.isFavorite ? 'お気に入りから解除' : 'お気に入りに追加'}
-                        onClick={() => void handleToggleFavorite(q)}
-                      >
-                        <Star
-                          size={20}
-                          strokeWidth={q.isFavorite ? 0 : 2}
-                          fill={q.isFavorite ? 'currentColor' : 'none'}
-                          aria-hidden="true"
-                        />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="question-body">{q.body}</p>
-                  <p className="question-source">{q.source === 'instagram' ? 'Instagramリンク経由' : 'Webから'} · 匿名</p>
-                </article>
-              );
-            })}
+            {report?.rows.map((q) => renderQuestionCard(q))}
           </div>
         )}
 
@@ -649,7 +784,7 @@ export function EventWorkspace({
 
         <div className="pagination-area">
           {expired ? (
-            <ActionButton tone="secondary" busy={busy === 'refresh'} onClick={() => void load('refresh')}>
+            <ActionButton tone="secondary" busy={busy === 'refresh'} onClick={() => void load('refresh', true)}>
               一覧を更新
             </ActionButton>
           ) : (
@@ -678,7 +813,6 @@ export function EventWorkspace({
       <section hidden={tab !== 'analysis'} className="analysis-workspace" aria-label="質問の集計">
         <div className="workspace-heading">
           <div>
-            <p className="eyebrow">INSIGHTS</p>
             <h1>質問の集計</h1>
           </div>
           <ActionButton tone="quiet" disabled={!!busy} onClick={poll.refresh} aria-label="集計を更新">
@@ -701,12 +835,10 @@ export function EventWorkspace({
         ) : (
           <>
             <div className="stat-grid">
-              <div
-                className="insight-clickable-card"
+              <button
+                type="button"
+                className="insight-card-button"
                 onClick={() => filterFromInsight({})}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && filterFromInsight({})}
                 aria-label={`届いた質問全 ${data.total} 件の本文を見る`}
               >
                 <span>届いた質問</span>
@@ -714,17 +846,13 @@ export function EventWorkspace({
                   {data.total}
                   <small>件</small>
                 </strong>
-                <p className="muted" style={{ fontSize: '.8125rem', marginTop: '8px' }}>
-                  タップして全質問を表示 →
-                </p>
-              </div>
+                <span className="insight-card-action">全質問を見る →</span>
+              </button>
 
-              <div
-                className="insight-clickable-card"
+              <button
+                type="button"
+                className="insight-card-button"
                 onClick={() => filterFromInsight({ source: 'instagram' })}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && filterFromInsight({ source: 'instagram' })}
                 aria-label={`Instagramリンク経由 ${data.sources.find((s) => s.source === 'instagram')?.count || 0} 件の本文を見る`}
               >
                 <span>Instagramリンク経由</span>
@@ -732,12 +860,10 @@ export function EventWorkspace({
                   {data.sources.find((s) => s.source === 'instagram')?.count || 0}
                   <small>件</small>
                 </strong>
-                <p className="muted" style={{ fontSize: '.8125rem', marginTop: '8px' }}>
-                  該当質問を見る →
-                </p>
-              </div>
+                <span className="insight-card-action">該当質問を見る →</span>
+              </button>
 
-              <div>
+              <div className="insight-stat-card">
                 <span>質問のテーマ</span>
                 <strong>
                   {data.categories.length}
@@ -771,7 +897,10 @@ export function EventWorkspace({
                         <meter min={0} max={data.total || 1} value={c.count} aria-hidden="true" />
                       </div>
                     </div>
-                    <ChevronRight size={18} style={{ color: 'var(--subtle)', marginLeft: '8px' }} aria-hidden="true" />
+                    <span className="insight-row-action">
+                      質問を見る
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </span>
                   </button>
                 ))}
                 {!data.categories.length && <p className="muted">質問が届くと内訳が表示されます。</p>}
@@ -794,7 +923,10 @@ export function EventWorkspace({
                       <time dateTime={d.day}>{d.day}</time>
                       <strong>{d.count}件</strong>
                     </div>
-                    <ChevronRight size={18} style={{ color: 'var(--subtle)', marginLeft: '8px' }} aria-hidden="true" />
+                    <span className="insight-row-action">
+                      質問を見る
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </span>
                   </button>
                 ))}
                 {!data.days.length && <p className="muted">まだ質問はありません。</p>}
@@ -806,7 +938,16 @@ export function EventWorkspace({
       </section>
 
       <section hidden={tab !== 'settings'} aria-label="ルーム設定">
-        <EventSettings event={event} token={token} onSaved={onSaved} onAuthError={onAuthError} />
+        <EventSettings
+          event={event}
+          token={token}
+          onSaved={onSaved}
+          onAuthError={onAuthError}
+          onDirtyChange={onDirtyChange}
+          onBusyChange={onBusyChange}
+          saveRef={saveRef}
+          discardRef={discardRef}
+        />
       </section>
     </div>
   );

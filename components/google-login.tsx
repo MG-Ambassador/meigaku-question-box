@@ -46,6 +46,7 @@ export default function GoogleLogin({ onSuccess, onError }: GoogleLoginProps) {
 
   useEffect(() => {
     if (!clientId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Expose missing external authentication configuration after client initialization.
       setLoadError('NEXT_PUBLIC_GOOGLE_CLIENT_ID が設定されていません。');
       return;
     }
@@ -106,6 +107,7 @@ export default function GoogleLogin({ onSuccess, onError }: GoogleLoginProps) {
       });
     } catch (e) {
       const err = e instanceof Error ? e : new Error('ログインボタンの初期化に失敗しました。');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Expose a synchronous failure from the external GIS widget initialization.
       setLoadError(err.message);
       onError?.(err);
     }

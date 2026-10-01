@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { LoaderCircle } from 'lucide-react';
 
 type Props = Omit<ComponentProps<typeof Button>, 'variant' | 'asChild'> & {
-  tone?: 'primary' | 'secondary' | 'quiet' | 'dark';
+  tone?: 'primary' | 'secondary' | 'quiet' | 'dark' | 'danger';
   busy?: boolean;
 };
 
