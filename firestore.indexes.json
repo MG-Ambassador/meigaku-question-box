@@ -561,6 +561,12 @@
       "collectionGroup": "rateLimits",
       "fieldPath": "acceptedAt",
       "indexes": []
+    },
+    {
+      "collectionGroup": "rateLimits",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

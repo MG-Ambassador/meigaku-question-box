@@ -1,4 +1,7 @@
-# 運営ID・パスワード
+> [!IMPORTANT]
+> **【廃止された認証方式】** 運営ID・パスワード認証は廃止され、現在は **Google Identity Services (GIS) による Google ID トークン認証 (`ADMIN_IDENTITIES`)** に移行しています。現行仕様は [README.md](../README.md) を参照してください。
+
+# 運営ID・パスワード（旧方式アーカイブ）
 
 来場者はログインなしで質問を投稿。運営用ページは `/admin`。
 メールアドレス・ChatGPTアカウント・Supabaseは不要。

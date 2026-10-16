@@ -19,14 +19,14 @@
 }
 
 :root {
-  --background: #fbfbf8;
+  --background: #ffffff;
   --foreground: #171717;
   --card: #ffffff;
   --card-foreground: #171717;
   --popover: #ffffff;
   --popover-foreground: #171717;
-  --primary: #ffdf00;
-  --primary-foreground: #20211f;
+  --primary: #ffe600;
+  --primary-foreground: #111111;
   --secondary: #f5f5f5;
   --secondary-foreground: #171717;
   --muted: #f5f5f5;
@@ -96,14 +96,14 @@
 
 
 :root {
-  --brand: #ffdf00;
-  --ink: #20211f;
+  --brand: #ffe600;
+  --ink: #111111;
   --border-control: #858585;
-  --subtle: #626c63;
+  --subtle: #626262;
   --text-support: .875rem;
   --text-body: 1rem;
-  --radius-control: 12px;
-  --radius-option: 8px;
+  --radius-control: 4px;
+  --radius-option: 4px;
   --space-unit: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -141,11 +141,11 @@ a { color: inherit; }
 .action-button { display: inline-flex; position: relative; padding: 0; height: auto; min-height: 48px; min-width: 48px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink); box-shadow: none; white-space: normal; font-size: .9375rem; font-weight: 700; flex-shrink: 1; transition: none; vertical-align: middle; }
 .action-button:hover, .action-button:disabled { background: transparent; transform: none; }
 .action-button:disabled { pointer-events: auto; opacity: 1; }
-.action-surface { display: flex; flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 12px 18px; min-height: 48px; border: 1px solid transparent; border-radius: inherit; background: var(--brand); box-shadow: 0 2px 0 #d2b600; transition: transform var(--motion-release) var(--motion-ease), box-shadow var(--motion-release) var(--motion-ease), background var(--motion-feedback) var(--motion-ease); }
+.action-surface { display: flex; flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 12px 18px; min-height: 48px; border: 1px solid transparent; border-radius: inherit; background: var(--brand); box-shadow: none; transition: transform var(--motion-release) var(--motion-ease), box-shadow var(--motion-release) var(--motion-ease), background var(--motion-feedback) var(--motion-ease); }
 .action-primary .action-surface, .action-dark .action-surface { min-height: 56px; }
-.action-secondary .action-surface { background: #fff; border-color: var(--border-control); box-shadow: 0 2px 0 #e5e5e5; }
+.action-secondary .action-surface { background: #fff; border-color: var(--border-control); box-shadow: none; }
 .action-quiet .action-surface { background: transparent; box-shadow: none; padding: 12px; }
-.action-dark .action-surface { background: var(--ink); color: #fff; box-shadow: 0 2px 0 #171717; }
+.action-dark .action-surface { background: var(--ink); color: #fff; box-shadow: none; }
 .action-danger .action-surface { background: #dc2626; color: #fff; border-color: #b91c1c; box-shadow: 0 2px 0 #991b1b; }
 .action-button[data-pressed=true]:not(:disabled) > .action-surface { transform: translateY(1px) scale(.98); box-shadow: none; transition-duration: var(--motion-press); }
 .action-button:disabled .action-surface { background: #f5f5f5; border-color: #e5e5e5; color: var(--subtle); box-shadow: none; }
@@ -179,7 +179,7 @@ a { color: inherit; }
 .question-input::placeholder, .field-input::placeholder { color: #737373; }
 .question-input:focus, .field-input:focus { border-color: var(--ink); }
 .question-input[readonly] { background: #f5f5f5; }
-.input-meta { display: flex; justify-content: space-between; gap: var(--space-3); color: #626c63; font-size: var(--text-support); margin-top: 9px; }
+.input-meta { display: flex; justify-content: space-between; gap: var(--space-3); color: #626262; font-size: var(--text-support); margin-top: 9px; }
 .input-meta span { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .theme-field { border: 0; padding: 0; margin: 26px 0; }
 .theme-field legend { margin-bottom: 10px; font-size: var(--text-support); font-weight: 700; }
@@ -288,25 +288,25 @@ a { color: inherit; }
 .category-stat meter { width: 100%; height: 10px; display: block; margin-top: 10px; background: #f5f5f5; border-radius: var(--radius-option); border: 0; }
 .category-stat meter::-webkit-meter-bar { background: #f5f5f5; border: 0; height: 10px; }
 :root {
-  --theme-life: #2563eb;
-  --theme-life-bg: #eff6ff;
-  --theme-life-border: #93c5fd;
+  --theme-life: #111111;
+  --theme-life-bg: #f4f4f5;
+  --theme-life-border: #d4d4d4;
 
-  --theme-study: #0d9488;
-  --theme-study-bg: #f0fdfa;
-  --theme-study-border: #99f6e4;
+  --theme-study: #111111;
+  --theme-study-bg: #f4f4f5;
+  --theme-study-border: #d4d4d4;
 
-  --theme-admission: #ea580c;
-  --theme-admission-bg: #fff7ed;
-  --theme-admission-border: #fed7aa;
+  --theme-admission: #111111;
+  --theme-admission-bg: #f4f4f5;
+  --theme-admission-border: #d4d4d4;
 
-  --theme-abroad: #9333ea;
-  --theme-abroad-bg: #faf5ff;
-  --theme-abroad-border: #e9d5ff;
+  --theme-abroad: #111111;
+  --theme-abroad-bg: #f4f4f5;
+  --theme-abroad-border: #d4d4d4;
 
-  --theme-other: #475569;
-  --theme-other-bg: #f8fafc;
-  --theme-other-border: #cbd5e1;
+  --theme-other: #111111;
+  --theme-other-bg: #f4f4f5;
+  --theme-other-border: #d4d4d4;
 }
 
 .question-row {
@@ -336,11 +336,11 @@ a { color: inherit; }
   font-weight: 700;
   border: 1px solid transparent;
 }
-.theme-badge[data-category="大学生活"] { color: #1d4ed8; background: var(--theme-life-bg); border-color: var(--theme-life-border); }
-.theme-badge[data-category="学び・授業"] { color: #0f766e; background: var(--theme-study-bg); border-color: var(--theme-study-border); }
-.theme-badge[data-category="入試・進路"] { color: #c2410c; background: var(--theme-admission-bg); border-color: var(--theme-admission-border); }
-.theme-badge[data-category="留学・国際交流"] { color: #7e22ce; background: var(--theme-abroad-bg); border-color: var(--theme-abroad-border); }
-.theme-badge[data-category="その他"] { color: #334155; background: var(--theme-other-bg); border-color: var(--theme-other-border); }
+.theme-badge[data-category="大学生活"] { color: var(--ink); background: var(--theme-life-bg); border-color: var(--theme-life-border); }
+.theme-badge[data-category="学び・授業"] { color: var(--ink); background: var(--theme-study-bg); border-color: var(--theme-study-border); }
+.theme-badge[data-category="入試・進路"] { color: var(--ink); background: var(--theme-admission-bg); border-color: var(--theme-admission-border); }
+.theme-badge[data-category="留学・国際交流"] { color: var(--ink); background: var(--theme-abroad-bg); border-color: var(--theme-abroad-border); }
+.theme-badge[data-category="その他"] { color: var(--ink); background: var(--theme-other-bg); border-color: var(--theme-other-border); }
 
 .star-button {
   width: 48px;
@@ -937,3 +937,32 @@ a { color: inherit; }
 .star-button { color: var(--subtle); }
 
 .field-input[aria-invalid=true], .question-input[aria-invalid=true] { border-color: #b91c1c; }
+
+/* One task at a time, with quiet monochrome surfaces. */
+.question-steps { display: flex; list-style: none; padding: 0; margin: 0 0 36px; gap: 20px; }
+.question-steps li { flex: 1; padding-top: 12px; border-top: 2px solid var(--border); color: var(--subtle); font-size: var(--text-support); }
+.question-steps li[aria-current=step] { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+.question-steps span { display: inline-block; margin-right: 8px; font-variant-numeric: tabular-nums; }
+.question-heading h1 { font-size: clamp(1.5rem, 5vw, 2rem); line-height: 1.5; }
+.question-heading h1:focus { outline: none; }
+.step-intro { color: var(--subtle); font-size: var(--text-support); margin-bottom: 28px; }
+.question-form .theme-options { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.question-form .theme-option { padding: 18px; font-size: var(--text-body); }
+.question-form .theme-option:has([data-state=checked]) { background: var(--ink); color: white; }
+.question-form .theme-option:has([data-state=checked]) .theme-radio { border-color: white; color: white; }
+.question-form .theme-radio svg { fill: currentColor; }
+.question-form .question-reassurance { margin-top: 28px; }
+.question-review { padding: 24px; background: #f4f4f5; border-left: 2px solid var(--ink); }
+.question-review p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 20px 0 12px; }
+.review-theme { font-size: var(--text-support); font-weight: 700; }
+.completion-art { display: block; width: min(240px, 100%); margin: 0 auto 24px; }
+.completion-note { color: var(--subtle); font-size: var(--text-support); margin-top: 24px; }
+.question-row, .question-row:hover, .insight-card-button:hover, .insight-clickable-card:hover { box-shadow: none; transform: none; }
+.question-row { border-left-width: 1px; }
+
+/* Keep the secondary wordmark and help action on one line on phones. */
+.visitor-header .wordmark small { font-size: .625rem; letter-spacing: .04em; }
+.visitor-header .help-button { flex-shrink: 0; }
+.visitor-header .help-button .action-surface { white-space: nowrap; }
+.visitor-header { flex-wrap: wrap; }
+.visitor-header .wordmark { min-width: 0; max-width: 100%; flex: 1 1 180px; }

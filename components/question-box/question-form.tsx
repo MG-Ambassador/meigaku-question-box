@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
-  Check,
+  ArrowLeft,
   LockKeyhole,
   Send,
 } from 'lucide-react';
@@ -44,6 +44,8 @@ export function QuestionForm({
   const [error, setError] = useState('');
   const [storageUnavailable, setStorageUnavailable] = useState(false);
   const [complete, setComplete] = useState(false);
+  const [step, setStep] = useState(1);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
   const [editPending, setEditPending] = useState(false);
   const [isCheckingPending, setIsCheckingPending] = useState(false);
   const [remaining, setRemaining] = useState(0);
@@ -69,6 +71,7 @@ export function QuestionForm({
       current.current = saved;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore the event-specific draft from browser sessionStorage after hydration.
       setDraft(saved);
+      setStep(saved.pending ? 3 : saved.body ? 2 : 1);
     } catch {
       setStorageUnavailable(true);
     }
@@ -109,10 +112,26 @@ export function QuestionForm({
     }
   }, [complete]);
 
+  function moveTo(next: number) {
+    setStep(next);
+    setError('');
+    requestAnimationFrame(() => stepHeading.current?.focus());
+  }
+
+  function advance() {
+    if (step === 2 && !current.current.body.trim()) {
+      setError('聞いてみたいことをひとこと書いてください。');
+      bodyInput.current?.focus();
+      return;
+    }
+    moveTo(step + 1);
+  }
+
   async function handleSend() {
     if (
       sending.current ||
       !ready ||
+      step !== 3 ||
       offline ||
       remaining > 0 ||
       (!event.open && !current.current.pending)
@@ -203,17 +222,21 @@ export function QuestionForm({
   if (complete) {
     return (
       <section className="completion in-page-completion" aria-labelledby="complete-title">
-        <span className="completion-check">
-          <Check size={38} strokeWidth={2.5} aria-hidden="true" />
-        </span>
+        <svg className="completion-art" viewBox="0 0 240 140" fill="none" aria-hidden="true">
+          <path d="M28 118h184M64 118V76h112v42M64 76l56-38 56 38M89 118V88h62v30" stroke="currentColor" strokeWidth="2" />
+          <path d="m145 25 65-13-24 46-9-21-32-12Z" fill="var(--brand)" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="m177 37 33-25M26 72c-8-32 51-56 80-42" stroke="currentColor" strokeWidth="2" strokeDasharray="4 6" />
+          <path d="m116 97 5 5 10-12" stroke="currentColor" strokeWidth="2" />
+        </svg>
         <h1 id="complete-title" tabIndex={-1} ref={completeHeading}>
           質問を受け付けました
         </h1>
         <p>
-          運営が確認し、イベントで
-          <br className="mobile-break" />
-          紹介する場合があります。
+          あなたの問いを、運営に届けました。
+          <br />
+          イベントで紹介・回答する場合があります。
         </p>
+        <p className="completion-note">この画面は閉じて大丈夫です。<br />すべての質問への回答や、個別の通知はありません。</p>
         <div className="completion-actions">
           <ActionButton
             type="button"
@@ -222,7 +245,7 @@ export function QuestionForm({
             onClick={() => {
               setComplete(false);
               setError('');
-              requestAnimationFrame(() => bodyInput.current?.focus());
+              moveTo(1);
             }}
           >
             もう1件質問する <ArrowRight size={19} aria-hidden="true" />
@@ -238,10 +261,11 @@ export function QuestionForm({
   return (
     <div className="question-container">
       <form
-        className="question-form paper-sheet"
+        className="question-form"
         onSubmit={(e) => {
           e.preventDefault();
-          void handleSend();
+          if (step < 3) advance();
+          else void handleSend();
         }}
         aria-busy={!ready || busy}
       >
@@ -271,44 +295,22 @@ export function QuestionForm({
           </div>
         )}
 
+        <ol className="question-steps" aria-label="質問のステップ">
+          {['テーマ', '質問', '確認'].map((label, index) => (
+            <li key={label} aria-current={step === index + 1 ? 'step' : undefined}>
+              <span>{String(index + 1).padStart(2, '0')}</span>{label}
+            </li>
+          ))}
+        </ol>
         <div className="question-heading">
-          <span className="question-number" aria-hidden="true">
-            Q.
-          </span>
-          <h1>
-            <label htmlFor="question-body">聞いてみたいこと</label>
+          <h1 ref={stepHeading} tabIndex={-1}>
+            {step === 1 ? 'どんなことを聞きたい？' : step === 2 ? '聞いてみたいこと' : 'この質問を届けますか？'}
           </h1>
         </div>
-
-        <textarea
-          id="question-body"
-          ref={bodyInput}
-          className="question-input"
-          placeholder="例えば、入学前にやっておいてよかったことは？"
-          value={draft.body}
-          maxLength={500}
-          readOnly={!!draft.pending}
-          disabled={!ready || busy}
-          aria-describedby="question-note question-count question-error"
-          aria-invalid={!!error || undefined}
-          onChange={(e) => {
-            if (draft.pending) return;
-            persist({ ...current.current, body: e.target.value });
-            setError('');
-          }}
-          onKeyDown={(e) => {
-            // Keep Enter key as newline inside textarea; do not submit on Enter or IME
-            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-              e.stopPropagation();
-            }
-          }}
-        />
-
-        <div className="input-meta">
-          <p id="question-note">氏名や連絡先は書かないでください。</p>
-          <span id="question-count">{draft.body.length} / 500</span>
-        </div>
-
+        <p className="step-intro">
+          {step === 1 ? '近いテーマをひとつ。迷ったら「その他」で大丈夫。' : step === 2 ? '小さな疑問も、あなたの言葉で。' : '送る前に、内容をもう一度。'}
+        </p>
+        <div hidden={step !== 1}>
         <fieldset
           disabled={!ready || busy || !!draft.pending}
           className="theme-field"
@@ -336,12 +338,54 @@ export function QuestionForm({
           </RadioGroup>
         </fieldset>
 
+        </div>
+        <div hidden={step !== 2 && !draft.pending}>
+        {draft.pending && <p className="review-theme">{draft.category}</p>}
+        <label className="sr-only" htmlFor="question-body">聞いてみたいこと</label>
+        <textarea
+          id="question-body"
+          ref={bodyInput}
+          className="question-input"
+          placeholder="例えば、入学前にやっておいてよかったことは？"
+          value={draft.body}
+          maxLength={500}
+          readOnly={!!draft.pending}
+          disabled={!ready || busy}
+          aria-describedby="question-note question-count question-error"
+          aria-invalid={step === 2 && !!error || undefined}
+          onChange={(e) => {
+            if (draft.pending) return;
+            persist({ ...current.current, body: e.target.value });
+            setError('');
+          }}
+          onKeyDown={(e) => {
+            // Keep Enter key as newline inside textarea; do not submit on Enter or IME
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+              e.stopPropagation();
+            }
+          }}
+        />
+
+        <div className="input-meta">
+          <p id="question-note">氏名や連絡先は書かないでください。</p>
+          <span id="question-count">{draft.body.length} / 500</span>
+        </div>
+
+        </div>
+        {step === 3 && !draft.pending && (
+          <div className="question-review">
+            <span className="review-theme">{draft.category}</span>
+            <p>{draft.body}</p>
+            <ActionButton type="button" tone="quiet" disabled={busy} onClick={() => moveTo(2)}>質問を直す</ActionButton>
+          </div>
+        )}
+
         <div className="question-reassurance">
           <LockKeyhole size={16} aria-hidden="true" />
           <strong>名前・ログインは不要です。</strong>
         </div>
 
-        <p className="consent">
+        <p className="consent" hidden={step !== 3}>
           送信すると、運営による閲覧・集計とイベントでの紹介に同意したものとします。すべての質問に回答できるとは限りません。
         </p>
 
@@ -372,6 +416,11 @@ export function QuestionForm({
         )}
 
         <div className="submit-area">
+          {step > 1 && !draft.pending && (
+            <ActionButton type="button" tone="quiet" disabled={busy} onClick={() => moveTo(step - 1)}>
+              <ArrowLeft size={18} aria-hidden="true" />戻る
+            </ActionButton>
+          )}
           <ActionButton
             type="submit"
             className="full-width send-button"
@@ -381,11 +430,13 @@ export function QuestionForm({
               busy ||
               offline ||
               remaining > 0 ||
-              !draft.body.trim() ||
+              (step === 3 && !draft.body.trim()) ||
               (!event.open && !draft.pending)
             }
           >
-            {draft.pending && (!busy || isCheckingPending) ? (
+            {step < 3 ? (
+              <>{step === 1 ? '質問を書く' : '内容を確認する'}<ArrowRight size={18} aria-hidden="true" /></>
+            ) : draft.pending && (!busy || isCheckingPending) ? (
               busy ? '確認中…' : '送信結果を確認'
             ) : (
               <>
@@ -411,8 +462,8 @@ export function QuestionForm({
               ? '同じ質問が重複して送られることはありません。'
               : !event.open
               ? 'このルームは受付を終了しました。'
-              : !draft.body.trim()
-              ? '質問を入力すると送信できます。'
+              : step === 2 && !draft.body.trim()
+              ? '何を知りたいか、ひとことからで大丈夫です。'
               : ''}
           </p>
         </div>
@@ -426,7 +477,7 @@ export function QuestionForm({
         action="新しい投稿として編集"
         onConfirm={() => {
           persist({ ...current.current, pending: undefined });
-          setError('');
+          moveTo(2);
           requestAnimationFrame(() => bodyInput.current?.focus());
         }}
       />

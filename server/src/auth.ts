@@ -55,6 +55,41 @@ export function getAllowedAdmins(): AdminIdentity[] {
 }
 
 /**
+ * 本番環境（NODE_ENV === 'production'）における必須環境変数の設定状態を検証する。
+ * 未設定またはデフォルト値のままでの本番起動を防止する（Fail-fast）。
+ */
+export function validateProductionEnv(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+
+  const missing: string[] = [];
+
+  if (!process.env.GOOGLE_CLIENT_ID?.trim()) {
+    missing.push('GOOGLE_CLIENT_ID');
+  }
+  if (getAllowedAdmins().length === 0) {
+    missing.push('ADMIN_IDENTITIES');
+  }
+  if (
+    !process.env.RATE_LIMIT_SECRET?.trim() ||
+    process.env.RATE_LIMIT_SECRET === 'meigaku-question-box-default-secret-key'
+  ) {
+    missing.push('RATE_LIMIT_SECRET');
+  }
+  if (
+    !process.env.CURSOR_SECRET?.trim() ||
+    process.env.CURSOR_SECRET === 'meigaku-question-box-cursor-secret-key'
+  ) {
+    missing.push('CURSOR_SECRET');
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `[FATAL] Required production environment variables are missing or insecure: ${missing.join(', ')}`
+    );
+  }
+}
+
+/**
  * Google ID トークンを検証し、許可された運営者であることを確認する Express ミドルウェア
  */
 export async function requireAdminAuth(

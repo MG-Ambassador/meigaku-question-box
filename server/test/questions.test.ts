@@ -2,7 +2,8 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { QuestionSubmissionSchema } from '../src/types.js';
 import { deriveQuestionId, calculateRequestHash } from '../src/questions.js';
-import { hashIp } from '../src/rate-limit.js';
+import { hashIp, extractClientIp } from '../src/rate-limit.js';
+import { validateProductionEnv } from '../src/auth.js';
 
 describe('P1 Questions API - Unit Tests', () => {
   it('QuestionSubmissionSchema: 有効な入力を通過させること', () => {
@@ -98,5 +99,56 @@ describe('P1 Questions API - Unit Tests', () => {
     assert.equal(hmac1, hmac2);
     assert.notEqual(hmac1, ip);
     assert.equal(hmac1.length, 64);
+  });
+
+  it('extractClientIp: X-Forwarded-For の左端偽装を無視し、信頼プロキシが付与した末尾側IPを返すこと', () => {
+    const reqSpoofed = {
+      headers: { 'x-forwarded-for': '203.0.113.99, 198.51.100.42' },
+      socket: { remoteAddress: '10.0.0.1' },
+    } as any;
+    assert.equal(extractClientIp(reqSpoofed), '198.51.100.42');
+
+    const reqArraySpoofed = {
+      headers: { 'x-forwarded-for': ['192.0.2.111', '::ffff:198.51.100.42'] },
+      socket: { remoteAddress: '10.0.0.1' },
+    } as any;
+    assert.equal(extractClientIp(reqArraySpoofed), '198.51.100.42');
+  });
+
+  it('validateProductionEnv: NODE_ENV=production で必須シークレット未設定時に例外を投げること', () => {
+    const prevEnv = process.env.NODE_ENV;
+    const prevRate = process.env.RATE_LIMIT_SECRET;
+    const prevCursor = process.env.CURSOR_SECRET;
+    const prevClient = process.env.GOOGLE_CLIENT_ID;
+    const prevAdmins = process.env.ADMIN_IDENTITIES;
+
+    try {
+      (process.env as any).NODE_ENV = 'production';
+      delete process.env.RATE_LIMIT_SECRET;
+      delete process.env.CURSOR_SECRET;
+      delete process.env.GOOGLE_CLIENT_ID;
+      delete process.env.ADMIN_IDENTITIES;
+
+      assert.throws(() => validateProductionEnv(), /Required production environment variables are missing/);
+      assert.throws(() => hashIp('192.0.2.1'), /MISSING_PRODUCTION_SECRET/);
+
+      process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
+      process.env.ADMIN_IDENTITIES = '[{"sub":"123","displayName":"Admin"}]';
+      process.env.RATE_LIMIT_SECRET = 'prod-strong-rate-secret-key';
+      process.env.CURSOR_SECRET = 'prod-strong-cursor-secret-key';
+
+      assert.doesNotThrow(() => validateProductionEnv());
+      assert.equal(hashIp('192.0.2.1').length, 64);
+    } finally {
+      (process.env as any).NODE_ENV = prevEnv;
+      if (prevRate === undefined) delete process.env.RATE_LIMIT_SECRET;
+      else process.env.RATE_LIMIT_SECRET = prevRate;
+      if (prevCursor === undefined) delete process.env.CURSOR_SECRET;
+      else process.env.CURSOR_SECRET = prevCursor;
+      if (prevClient === undefined) delete process.env.GOOGLE_CLIENT_ID;
+      else process.env.GOOGLE_CLIENT_ID = prevClient;
+      if (prevAdmins === undefined) delete process.env.ADMIN_IDENTITIES;
+      else process.env.ADMIN_IDENTITIES = prevAdmins;
+    }
   });
 });

@@ -29,8 +29,9 @@ declare global {
 export function createApp() {
   const app = express();
 
-  // リバースプロキシ（Google Cloud Run / Load Balancer）の信頼
-  app.set('trust proxy', true);
+  // リバースプロキシ（Google Cloud Run = 1ホップ）の信頼段数を明示指定（無条件trueによる偽装を防止）
+  const trustedProxyHops = Math.max(1, Number(process.env.TRUSTED_PROXY_HOPS) || 1);
+  app.set('trust proxy', trustedProxyHops);
 
   // セキュリティヘッダー
   app.use(

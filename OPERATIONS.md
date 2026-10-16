@@ -1,6 +1,9 @@
-# 現在の認証方式（2026-09-14）
+> [!IMPORTANT]
+> **【アーカイブ資料】** 本ドキュメントは旧基盤（Cloudflare D1 / パスワード認証時代）の作業記録です。現行の **GitHub Pages ＋ Google Cloud Run ＋ Cloud Firestore（Google Identity Services 認証）** 構成の運用・環境変数については [README.md](README.md) および [docs/GitHub-Pages-Google-Cloud-開発ロードマップ.md](docs/GitHub-Pages-Google-Cloud-開発ロードマップ.md) を参照してください。
 
-運営者ごとのID・パスワード方式へ変更。メール認証・ChatGPT認証は使用しません。現行手順は [setup/PASSWORD_LOGIN.md](setup/PASSWORD_LOGIN.md) を参照してください。以下は以前の作業記録を含みます。
+# 過去の認証方式記録（2026-09-14）
+
+運営者ごとのID・パスワード方式へ変更した当時の記録です。メール認証・ChatGPT認証は使用しません。当時の手順は [setup/PASSWORD_LOGIN.md](setup/PASSWORD_LOGIN.md) を参照してください。以下は以前の作業記録を含みます。
 
 # 明学の質問箱：導入時の設定
 

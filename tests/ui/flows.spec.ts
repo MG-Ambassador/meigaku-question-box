@@ -76,15 +76,26 @@ async function fixture(page: Page, count = 150) {
 }
 async function login(page: Page) { await page.goto('admin/'); await page.getByRole('button', { name: 'テスト用Googleログイン' }).click(); await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible(); }
 
+async function startWriting(page: Page) {
+  await expect(page.locator('.question-form')).toHaveAttribute('aria-busy', 'false');
+  const next = page.getByRole('button', { name: '質問を書く', exact: true });
+  if (await next.isVisible()) await next.click();
+}
+async function reviewQuestion(page: Page) {
+  await page.getByRole('button', { name: '内容を確認する', exact: true }).click();
+}
 async function foldAndSend(page: Page) {
+  await reviewQuestion(page);
   await page.getByRole('button', { name: '質問を送る', exact: true }).click();
 }
 
 test('direct input, tactile surface, successful submission and clean sharing', async ({ page }) => {
   const state = await fixture(page);
   await page.goto('?event=campus&from=instagram');
-  const body = page.getByLabel('聞いてみたいこと'); await body.fill('自分に合うサークルの探し方は？');
   await page.getByText('学び・授業', { exact: true }).click();
+  const body = page.getByLabel('聞いてみたいこと'); await startWriting(page); await body.fill('自分に合うサークルの探し方は？');
+
+  await reviewQuestion(page);
   const send = page.getByRole('button', { name: '質問を送る', exact: true });
   await send.scrollIntoViewIfNeeded();
   const box = (await send.boundingBox())!; await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
@@ -100,7 +111,7 @@ test('direct input, tactile surface, successful submission and clean sharing', a
 
 test('unknown submission survives reload and reuses the exact request', async ({ page }) => {
   const state = await fixture(page); state.loseResponse = true;
-  await page.goto('?event=campus&from=instagram'); await page.getByLabel('聞いてみたいこと').fill('留学の準備について教えてください');
+  await page.goto('?event=campus&from=instagram'); await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('留学の準備について教えてください');
   await foldAndSend(page);
   await expect(page.getByText('受付が完了したか確認できませんでした。', { exact: false })).toBeVisible();
   await page.reload();
@@ -112,12 +123,12 @@ test('unknown submission survives reload and reuses the exact request', async ({
 
 test('event drafts stay separate, closed and invalid links do not redirect', async ({ page }) => {
   const state = await fixture(page);
-  await page.goto('?event=campus'); await page.getByLabel('聞いてみたいこと').fill('元のイベントの質問');
+  await page.goto('?event=campus'); await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('元のイベントの質問');
   await expect(page).toHaveURL(/room=campus/);
   await expect(page.getByRole('button', { name: '変更', exact: true })).toHaveCount(0);
   await page.goto('?room=other'); await expect(page.getByLabel('聞いてみたいこと')).toHaveValue('');
   await page.goBack(); await expect(page.getByLabel('聞いてみたいこと')).toHaveValue('元のイベントの質問');
-  state.event.open = 0; await page.reload(); await expect(page.getByRole('button', { name: '質問を送る', exact: true })).toBeDisabled();
+  state.event.open = 0; await page.reload(); await expect(page.getByRole('button', { name: '内容を確認する', exact: true })).toBeDisabled();
   await page.goto('?event=missing'); await expect(page.getByRole('heading', { name: 'この質問箱は利用できません' })).toBeVisible(); await expect(page.getByLabel('聞いてみたいこと')).toHaveCount(0);
 });
 
@@ -166,7 +177,7 @@ test('QR and sharing fallback, mobile widths and reduced motion', async ({ page 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [320, 390, 430, 1280]) { await page.setViewportSize({ width, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('聞いてみたいこと').fill('テスト質問'); await foldAndSend(page);
+  await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('テスト質問'); await foldAndSend(page);
   await page.evaluate(() => { Object.defineProperty(navigator, 'share', { configurable: true, value: undefined }); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('blocked'); } } }); });
   await page.getByRole('button', { name: 'この質問箱を共有' }).click(); await expect(page.getByLabel('募集ページのURL')).toHaveValue(/\/test-box\/\?room=campus$/);
   await page.screenshot({ path: 'test-results/mobile-complete.png', fullPage: true });
@@ -175,7 +186,8 @@ test('QR and sharing fallback, mobile widths and reduced motion', async ({ page 
 test('auth expiry returns to login and offline state prevents sending', async ({ page, context }) => {
   const state = await fixture(page); await login(page); state.denyAuth = true;
   await expect(page.getByRole('button', { name: 'テスト用Googleログイン' })).toBeVisible({ timeout: 10000 });
-  await page.goto('?event=campus'); await page.getByLabel('聞いてみたいこと').fill('オフライン時の質問');
+  await page.goto('?event=campus'); await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('オフライン時の質問');
+  await reviewQuestion(page);
   await context.setOffline(true); await expect(page.getByRole('button', { name: '質問を送る', exact: true })).toBeDisabled();
   await context.setOffline(false); await expect(page.getByRole('button', { name: '質問を送る', exact: true })).toBeEnabled();
   await expect(page.getByLabel('聞いてみたいこと')).toHaveValue('オフライン時の質問');
@@ -184,8 +196,9 @@ test('auth expiry returns to login and offline state prevents sending', async ({
 test('cancelled press does not submit; keyboard and sheets retain focus', async ({ page }) => {
   const state = await fixture(page);
   await page.goto('?event=campus');
-  await page.getByLabel('聞いてみたいこと').fill('キーボードからの質問');
+  await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('キーボードからの質問');
   await page.screenshot({ path: 'test-results/mobile-input.png', animations: 'disabled', caret: 'hide' });
+  await reviewQuestion(page);
   const send = page.getByRole('button', { name: '質問を送る', exact: true });
   await send.scrollIntoViewIfNeeded();
   const box = (await send.boundingBox())!;
@@ -214,7 +227,7 @@ test('direct submission disables input during send, preserves input on failure, 
   await fixture(page);
   await page.goto('?room=campus');
   const body = page.getByLabel('聞いてみたいこと');
-  await body.fill('失敗時に内容が残るかテスト');
+  await startWriting(page); await body.fill('失敗時に内容が残るかテスト');
 
   // Intercept and delay /api/questions to verify disabled state while submitting
   let resolvePost: (() => void) | null = null;
@@ -223,6 +236,7 @@ test('direct submission disables input during send, preserves input on failure, 
     await route.fulfill({ status: 400, json: { error: { code: 'INPUT_INVALID', message: '質問内容を確認してください。' } } });
   });
 
+  await reviewQuestion(page);
   const send = page.getByRole('button', { name: '質問を送る', exact: true });
   await send.click();
 
@@ -246,8 +260,9 @@ test('reduced motion keeps airplane animation disabled and completion remains ac
   const state = await fixture(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('?room=campus');
-  await page.getByLabel('聞いてみたいこと').fill('動きを減らした状態での送信');
+  await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('動きを減らした状態での送信');
 
+  await reviewQuestion(page);
   const send = page.getByRole('button', { name: '質問を送る', exact: true });
   await send.click();
   await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeFocused();
@@ -635,7 +650,7 @@ test('R10: unconfirmed submission leaves body readOnly and allows text selection
   await page.goto('?event=campus');
 
   const body = page.getByLabel('聞いてみたいこと');
-  await body.fill('未確認状態でのテキスト選択テスト');
+  await startWriting(page); await body.fill('未確認状態でのテキスト選択テスト');
   await foldAndSend(page);
 
   await expect(page.getByText('受付が完了したか確認できませんでした。', { exact: false })).toBeVisible();
@@ -752,6 +767,7 @@ for (const width of [320, 390, 768, 1280]) {
     await fixture(page); await page.setViewportSize({ width, height: 900 });
     await page.goto('?room=campus');
     await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    await startWriting(page);
     await expect(page.getByLabel('聞いてみたいこと')).toBeVisible();
     const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
     expect(await fits()).toBe(true);
@@ -853,4 +869,27 @@ test('R06: new-room and logout paths retain edits on cancel and save or discard 
   await dialog.getByRole('button', { name: '破棄してログアウト' }).click();
   await expect(page.getByRole('button', { name: 'テスト用Googleログイン' })).toBeVisible();
   expect(state.event.title).toBe('新規作成前に保存');
+});
+
+
+test('wizard validates locally, preserves edits when going back, and sends only after review', async ({ page }) => {
+  const state = await fixture(page);
+  await page.goto('?room=campus');
+  await page.getByRole('radio', { name: '入試・進路', exact: true }).click();
+  await startWriting(page);
+  await reviewQuestion(page);
+  await expect(page.getByLabel('聞いてみたいこと')).toBeFocused();
+  await expect(page.locator('#question-error')).toContainText('ひとこと書いて');
+  expect(state.posted).toHaveLength(0);
+  await page.getByLabel('聞いてみたいこと').fill('入学までに何を準備したらいい？');
+  await reviewQuestion(page);
+  await expect(page.locator('.question-review')).toContainText('入試・進路');
+  await page.getByRole('button', { name: '質問を直す' }).click();
+  await expect(page.getByLabel('聞いてみたいこと')).toHaveValue('入学までに何を準備したらいい？');
+  await page.getByRole('button', { name: '戻る', exact: true }).click();
+  await expect(page.getByRole('radio', { name: '入試・進路', exact: true })).toBeChecked();
+  await startWriting(page);
+  await foldAndSend(page);
+  expect(state.posted).toHaveLength(1);
+  await expect(page.getByText('この画面は閉じて大丈夫です。', { exact: false })).toBeVisible();
 });

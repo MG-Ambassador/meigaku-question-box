@@ -8,29 +8,39 @@ const WINDOW_SECONDS = 600; // 10分
 const MAX_SUBMISSIONS_PER_WINDOW = 5;
 const KEY_VERSION = 'v1';
 
+const DEFAULT_RATE_LIMIT_SECRET = 'meigaku-question-box-default-secret-key';
+
 /**
- * Cloud Run / リバースプロキシ環境からクライアントのIPアドレスを安全に抽出・正規化する
+ * Cloud Run / リバースプロキシ環境からクライアントのIPアドレスを安全に抽出・正規化する。
+ * クライアントによる X-Forwarded-For 左端偽装（Spoofing）を防ぐため、
+ * 信頼するプロキシ段数（TRUSTED_PROXY_HOPS、デフォルト1＝Google Front End）に基づき末尾側から抽出する。
  */
 export function extractClientIp(req: Request): string {
-  // Cloud Run または Google Cloud Load Balancer では
-  // X-Forwarded-For: <client-ip>, <proxy-1>, <proxy-2> の形式で入る。
-  // 一番左がクライアントと主張されたIPだが、スプーフィングの可能性を考慮し
-  // 複数段ある場合は末尾のGoogle信頼プロキシ手前のホップを参照するか、
-  // 信頼されたヘッダーから抽出する。
   const forwarded = req.headers['x-forwarded-for'];
+  const trustedHops = Math.max(1, Number(process.env.TRUSTED_PROXY_HOPS) || 1);
   let rawIp = '';
 
-  if (typeof forwarded === 'string') {
-    const parts = forwarded.split(',').map((p) => p.trim()).filter(Boolean);
-    // Cloud Run の直前プロキシ(Google Front End)を考慮:
-    // 通常、parts[0] がクライアントIP
-    rawIp = parts[0] || '';
-  } else if (Array.isArray(forwarded) && forwarded.length > 0) {
-    rawIp = forwarded[0].split(',')[0].trim();
+  const rawHeaderList =
+    typeof forwarded === 'string'
+      ? [forwarded]
+      : Array.isArray(forwarded)
+      ? forwarded
+      : [];
+
+  if (rawHeaderList.length > 0) {
+    const parts = rawHeaderList
+      .flatMap((entry) => entry.split(','))
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (parts.length > 0) {
+      const targetIndex = Math.max(0, parts.length - trustedHops);
+      rawIp = parts[targetIndex] || '';
+    }
   }
 
   if (!rawIp) {
-    rawIp = req.socket.remoteAddress || req.ip || '127.0.0.1';
+    rawIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
   }
 
   // IPv4-mapped IPv6 (::ffff:192.0.2.1) の正規化
@@ -45,8 +55,17 @@ export function extractClientIp(req: Request): string {
  * IPアドレスを生保存せず、HMAC-SHA256 でハッシュ化する
  */
 export function hashIp(ip: string): string {
-  const secret = process.env.RATE_LIMIT_SECRET || 'meigaku-question-box-default-secret-key';
-  return crypto.createHmac('sha256', secret).update(ip).digest('hex');
+  const secret = process.env.RATE_LIMIT_SECRET;
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!secret || secret === DEFAULT_RATE_LIMIT_SECRET)
+  ) {
+    throw new Error('MISSING_PRODUCTION_SECRET: RATE_LIMIT_SECRET must be set in production');
+  }
+  return crypto
+    .createHmac('sha256', secret || DEFAULT_RATE_LIMIT_SECRET)
+    .update(ip)
+    .digest('hex');
 }
 
 /**

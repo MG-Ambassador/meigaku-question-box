@@ -37,8 +37,17 @@ export interface CursorPayload {
   days: { day: string; count: number }[];
 }
 
+const DEFAULT_CURSOR_SECRET = 'meigaku-question-box-cursor-secret-key';
+
 function getCursorSecret(): string {
-  return process.env.CURSOR_SECRET || 'meigaku-question-box-cursor-secret-key';
+  const secret = process.env.CURSOR_SECRET;
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!secret || secret === DEFAULT_CURSOR_SECRET)
+  ) {
+    throw new Error('MISSING_PRODUCTION_SECRET: CURSOR_SECRET must be set in production');
+  }
+  return secret || DEFAULT_CURSOR_SECRET;
 }
 
 /**

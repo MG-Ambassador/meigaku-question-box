@@ -159,7 +159,7 @@ export default function Home() {
           <div className="form-loading" role="status">
             <div className="skeleton-line" />
             <div className="skeleton-input" />
-            <p>ルームを読み込み中…</p>
+            <p>質問箱を準備しています。もう少しで開きます。</p>
           </div>
         )}
 
@@ -220,7 +220,7 @@ export default function Home() {
         <div className="help-copy">
           <h3>質問の送り方</h3>
           <p>
-            参加するルームを確認し、聞いてみたいこととテーマを入力します。「質問を送る」を押すと質問が届きます。
+            参加するルームを確認し、テーマを選び、聞いてみたいことを書いて、内容を確認します。「質問を送る」を押すと質問が届きます。
           </p>
           <h3>質問を見られる人</h3>
           <p>
