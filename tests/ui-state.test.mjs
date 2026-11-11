@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readDraft, writeDraft, prepareSubmission, DRAFT_TTL } from '../lib/question-draft.ts';
 import { appendReport, newQuestionCount } from '../lib/report-state.ts';
-import { apiFetch, getAdminReport, updateAdminEvent, getPublicEvent, ApiError } from '../lib/api-client.ts';
+import { apiFetch, getAdminReport, updateAdminEvent, getPublicEvent, ApiError, login, operatorAction } from '../lib/api-client.ts';
+import { readSession, writeSession, clearSession } from '../lib/admin-session.ts';
+import { validateNewPassword } from '../lib/password-rules.ts';
 import { getRecruitmentUrl } from '../lib/public-url.ts';
 
 const id = '8a947258-13a6-4c1c-b3f9-12e0f9f72f58';
@@ -73,5 +75,37 @@ test('API client preserves Retry-After and aborts stalled requests', async () =>
     await assert.rejects(apiFetch('/test', { timeoutMs: 5 }), { name: 'TimeoutError' });
     const controller = new AbortController(); const promise = apiFetch('/test', { signal: controller.signal }); controller.abort();
     await assert.rejects(promise, { name: 'AbortError' });
+  } finally { globalThis.fetch = oldFetch; }
+});
+test('admin session survives reload, expires and recovers from corrupt or blocked storage', () => {
+  const s = storage(); const token = 'c'.repeat(64);
+  assert.equal(readSession(s), null);
+  assert.equal(writeSession({ token, expiresAt: Date.now() + 1000 }, s), true);
+  assert.deepEqual(readSession(s)?.token, token);
+  assert.equal(readSession(s, Date.now() + 2000), null);
+  assert.equal(readSession(s), null, 'expired session is removed');
+  s.setItem('mga:admin-session:v1', '{broken'); assert.equal(readSession(s), null);
+  s.setItem('mga:admin-session:v1', JSON.stringify({ token: 'not-hex', expiresAt: Date.now() + 1000 })); assert.equal(readSession(s), null);
+  const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); }, removeItem: () => { throw new Error('blocked'); } };
+  assert.equal(readSession(blocked), null); assert.equal(writeSession({ token, expiresAt: Date.now() + 1000 }, blocked), false);
+  writeSession({ token, expiresAt: Date.now() + 1000 }, s); clearSession(s); assert.equal(readSession(s), null);
+});
+test('password rules count code points and reject reuse or mismatch', () => {
+  assert.match(validateNewPassword('', 'x'.repeat(15), 'x'.repeat(15)), /現在/);
+  assert.match(validateNewPassword('old', 'x'.repeat(14), 'x'.repeat(14)), /15〜128/);
+  assert.equal(validateNewPassword('old', '😀'.repeat(15), '😀'.repeat(15)), '');
+  assert.match(validateNewPassword('x'.repeat(15), 'x'.repeat(15), 'x'.repeat(15)), /異なる/);
+  assert.match(validateNewPassword('old', 'x'.repeat(15), 'y'.repeat(15)), /一致/);
+});
+test('login and operator APIs send credentials only in the body and encode IDs', async () => {
+  const oldFetch = globalThis.fetch; const calls = [];
+  globalThis.fetch = async (url, options) => { calls.push({ url, options }); return Response.json({ ok: true }); };
+  try {
+    await login('owner', 'secret pass phrase');
+    assert.match(calls[0].url, /\/api\/auth\/login$/); assert.equal(calls[0].options.method, 'POST');
+    assert.equal(calls[0].options.headers.get('Authorization'), null);
+    assert.deepEqual(JSON.parse(calls[0].options.body), { loginId: 'owner', password: 'secret pass phrase' });
+    await operatorAction('token', 'a/b', 'reset');
+    assert.match(calls[1].url, /operators\/a%2Fb\/reset$/); assert.equal(calls[1].options.headers.get('Authorization'), 'Bearer token');
   } finally { globalThis.fetch = oldFetch; }
 });

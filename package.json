@@ -21,6 +21,7 @@
     "purge:dry-run": "node scripts/purge-expired-data.mjs --dry-run",
     "purge:execute": "node scripts/purge-expired-data.mjs --execute",
     "smoke:production": "node scripts/smoke-production.mjs",
+    "operator:create": "npm --prefix server run operator:create --",
     "db:generate": "drizzle-kit generate",
     "test:ui-state": "node --test tests/ui-state.test.mjs",
     "test:ui": "playwright test",

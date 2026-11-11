@@ -2,7 +2,15 @@ import crypto from 'node:crypto';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { requireAdminAuth } from './auth.js';
+import { requireAdminAuth, requireOwner, requireSession } from './auth.js';
+import {
+  loginHandler,
+  logoutHandler,
+  changePasswordHandler,
+  listOperatorsHandler,
+  createOperatorHandler,
+  operatorActionHandler,
+} from './operators.js';
 import { submitQuestionHandler } from './questions.js';
 import {
   listPublicEventsHandler,
@@ -89,8 +97,16 @@ export function createApp() {
   app.get('/api/events/:id', getEventByIdHandler);
   app.post('/api/questions', submitQuestionHandler);
 
-  // 運営者専用 API（要認証）
-  app.get('/api/admin/me', requireAdminAuth, getAdminMeHandler);
+  // 運営ログイン（ID・パスワード）
+  app.post('/api/auth/login', loginHandler);
+  app.post('/api/auth/logout', requireSession, logoutHandler);
+  app.post('/api/auth/password', requireSession, changePasswordHandler);
+
+  // 運営者専用 API（要認証）。/api/admin/me は初回パスワード変更前でも参照できる
+  app.get('/api/admin/me', requireSession, getAdminMeHandler);
+  app.get('/api/admin/operators', requireAdminAuth, requireOwner, listOperatorsHandler);
+  app.post('/api/admin/operators', requireAdminAuth, requireOwner, createOperatorHandler);
+  app.post('/api/admin/operators/:id/:action', requireAdminAuth, requireOwner, operatorActionHandler);
   app.get('/api/admin/events', requireAdminAuth, listAdminEventsHandler);
   app.get('/api/admin', requireAdminAuth, getAdminReportHandler);
   app.put('/api/admin/questions/:id/favorite', requireAdminAuth, toggleQuestionFavoriteHandler);

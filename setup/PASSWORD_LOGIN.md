@@ -1,5 +1,6 @@
 > [!IMPORTANT]
-> **【廃止された認証方式】** 運営ID・パスワード認証は廃止され、現在は **Google Identity Services (GIS) による Google ID トークン認証 (`ADMIN_IDENTITIES`)** に移行しています。現行仕様は [README.md](../README.md) を参照してください。
+> **【旧 D1 版の記録】** 以下は Cloudflare D1 時代の ID・パスワード方式の記録です。Google ログインを経て、現在は同じ考え方の **運営ID・パスワード方式を Cloud Run＋Firestore 向けに再実装** しています（`server/src/operators.ts` ほか）。
+> 現行版との主な違い: セッションは Cookie ではなく `Authorization: Bearer` のトークン（有効8時間、ブラウザの sessionStorage に保存）、最初の責任者は `INITIAL_OPERATOR_HASH` ではなく `npm run operator:create` で作成。現行の手順は [README.md](../README.md) を参照してください。
 
 # 運営ID・パスワード（旧方式アーカイブ）
 

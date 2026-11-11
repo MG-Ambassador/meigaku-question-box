@@ -139,15 +139,60 @@ export interface AuditDoc {
   actorSub: string;
   action: string;
   eventId: string;
+  /** 運営アカウント操作の対象 loginId（イベント操作では未設定） */
+  targetId?: string;
   version: number;
   createdAt: Timestamp;
 }
 
-// 管理者識別情報
+// 運営アカウント
+export const OPERATOR_ROLES = ['owner', 'operator'] as const;
+export type OperatorRole = (typeof OPERATOR_ROLES)[number];
+
+export interface OperatorDoc {
+  loginId: string;
+  displayName: string;
+  passwordHash: string;
+  role: OperatorRole;
+  active: boolean;
+  mustChange: boolean;
+  version: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface OperatorSessionDoc {
+  operatorId: string;
+  version: number;
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+}
+
+export const LoginSchema = z.object({
+  loginId: z.string().max(100),
+  password: z.string().max(128),
+});
+
+export const PasswordChangeSchema = z.object({
+  currentPassword: z.string().max(128),
+  newPassword: z.string(),
+});
+
+export const CreateOperatorSchema = z.object({
+  loginId: z.string().max(100),
+  displayName: z.string().trim().min(1, '表示名を入力してください').max(60, '表示名は60文字以内で入力してください'),
+});
+
+export const OPERATOR_ACTIONS = ['reset', 'disable', 'enable'] as const;
+export type OperatorAction = (typeof OPERATOR_ACTIONS)[number];
+
+// ログイン中の運営者（req.adminUser）。sub には loginId が入る。
 export interface AdminIdentity {
   sub: string;
+  loginId: string;
   displayName: string;
-  email?: string;
+  role: OperatorRole;
+  mustChange: boolean;
 }
 
 // API エラー型

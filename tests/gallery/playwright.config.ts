@@ -6,6 +6,6 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev -- --port 3101 --hostname 127.0.0.1',
     url: 'http://127.0.0.1:3101/test-box/', timeout: 120000,
-    env: { NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:3101', NEXT_PUBLIC_BASE_PATH: '/test-box', NEXT_PUBLIC_GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com' },
+    env: { NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:3101', NEXT_PUBLIC_BASE_PATH: '/test-box' },
   },
 });

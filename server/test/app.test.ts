@@ -1,19 +1,27 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
+import { Timestamp } from '@google-cloud/firestore';
 import { createApp } from '../src/app.js';
+import { setFirestore } from '../src/firestore.js';
+import { issueSession } from '../src/sessions.js';
+import { installFakeFirestore } from './fake-firestore.js';
 
 describe('P1 Cloud Run API Server - Integration Tests', () => {
   let server: Server;
   let baseUrl: string;
+  let adminToken: string;
 
   before(async () => {
     (process.env as any).NODE_ENV = 'test';
-    process.env.ALLOW_TEST_AUTH = 'true';
-    process.env.ADMIN_IDENTITIES = JSON.stringify([
-      { sub: 'test-admin-sub-123', displayName: 'テスト管理者', email: 'admin@meigaku.example' },
-    ]);
     process.env.RATE_LIMIT_SECRET = 'test-secret';
+    const { records } = installFakeFirestore();
+    const now = Timestamp.now();
+    records.set('operators/test-admin', {
+      loginId: 'test-admin', displayName: 'テスト管理者', role: 'operator', passwordHash: '',
+      active: true, mustChange: false, version: 1, createdAt: now, updatedAt: now,
+    });
+    adminToken = (await issueSession('test-admin', 1)).token;
 
     const app = createApp();
     await new Promise<void>((resolve) => {
@@ -28,6 +36,7 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
   });
 
   after(async () => {
+    setFirestore(null);
     (server as any).closeAllConnections?.();
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
@@ -97,28 +106,31 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
     assert.equal(body.error?.code, 'UNAUTHENTICATED');
   });
 
-  it('GET /api/admin/me: 未許可アカウントで 403 FORBIDDEN を返すこと', async () => {
-    const res = await fetch(`${baseUrl}/api/admin/me`, {
-      headers: { Authorization: 'Bearer test-token-unknown-sub-999' },
-    });
-    assert.equal(res.status, 403);
-    const body = (await res.json()) as any;
-    assert.equal(body.error?.code, 'FORBIDDEN');
+  it('GET /api/admin/me: 無効なトークンで 401 UNAUTHENTICATED を返すこと', async () => {
+    for (const token of ['test-token-unknown-sub-999', 'f'.repeat(64)]) {
+      const res = await fetch(`${baseUrl}/api/admin/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assert.equal(res.status, 401);
+      const body = (await res.json()) as any;
+      assert.equal(body.error?.code, 'UNAUTHENTICATED');
+    }
   });
 
   it('GET /api/admin/me: 許可された管理者で 200 OK と displayName を返すこと', async () => {
     const res = await fetch(`${baseUrl}/api/admin/me`, {
-      headers: { Authorization: 'Bearer test-token-test-admin-sub-123' },
+      headers: { Authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.status, 200);
     const body = (await res.json()) as any;
     assert.equal(body.displayName, 'テスト管理者');
-    assert.equal(body.sub, 'test-admin-sub-123');
+    assert.equal(body.sub, 'test-admin');
+    assert.equal(body.role, 'operator');
   });
 
   it('GET /api/admin: event パラメータなしで 400 VALIDATION_ERROR を返すこと', async () => {
     const res = await fetch(`${baseUrl}/api/admin`, {
-      headers: { Authorization: 'Bearer test-token-test-admin-sub-123' },
+      headers: { Authorization: `Bearer ${adminToken}` },
     });
     assert.equal(res.status, 400);
     const body = (await res.json()) as any;
@@ -141,7 +153,7 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-token-test-admin-sub-123',
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({ action: 'invalid_action', version: 1 }),
     });
@@ -166,7 +178,7 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-token-test-admin-sub-123',
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({ favorite: 'not-a-bool' }),
     });

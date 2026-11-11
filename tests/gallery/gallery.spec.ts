@@ -1,22 +1,18 @@
 import { test, expect } from '@playwright/test';
 
 test('development gallery shows 13 previews with working filters and nested dialogs', async ({ page }) => {
-  await page.addInitScript(() => {
-    let callback: (response: { credential: string }) => void;
-    window.google = { accounts: { id: {
-      initialize: options => { callback = options.callback; },
-      renderButton: parent => { const button = document.createElement('button'); button.textContent = '検証ログイン'; button.onclick = () => callback({ credential: 'test-token' }); parent.replaceChildren(button); },
-      disableAutoSelect: () => {},
-    } } };
-  });
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/admin/me') return route.fulfill({ json: { sub: 'test', displayName: '運営' } });
+    const user = { sub: 'test', loginId: 'test', displayName: '運営', role: 'operator', mustChange: false };
+    if (path === '/api/auth/login') return route.fulfill({ json: { token: 'a'.repeat(64), expiresAt: Date.now() + 3600000, user } });
+    if (path === '/api/admin/me') return route.fulfill({ json: user });
     if (path === '/api/admin/events') return route.fulfill({ json: [{ id: 'campus', title: '確認用ルーム', date: '', open: 1, version: 1 }] });
     return route.fulfill({ json: { total: 0, filteredTotal: 0, rows: [], categories: [], sources: [], days: [], hasNext: false, favoriteRevision: 0, generatedAt: Date.now() } });
   });
   await page.goto('admin/');
-  await page.getByRole('button', { name: '検証ログイン' }).click();
+  await page.getByLabel('運営ID').fill('test');
+  await page.getByLabel('パスワード', { exact: true }).fill('gallery pass phrase');
+  await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   const trigger = page.getByRole('button', { name: 'UI部品ギャラリー（開発専用）' });
   await trigger.click();
   const gallery = page.locator('.dev-gallery');

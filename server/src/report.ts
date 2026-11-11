@@ -132,7 +132,9 @@ export async function getAdminMeHandler(req: Request, res: Response): Promise<vo
   res.json({
     displayName: req.adminUser.displayName,
     sub: req.adminUser.sub,
-    email: req.adminUser.email,
+    loginId: req.adminUser.loginId,
+    role: req.adminUser.role,
+    mustChange: req.adminUser.mustChange,
   });
 }
 

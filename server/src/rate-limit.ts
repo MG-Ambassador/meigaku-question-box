@@ -78,6 +78,23 @@ export function getRateLimitDocRef(ip: string): DocumentReference {
   return db.collection(COLLECTION_RATE_LIMITS).doc(docId);
 }
 
+/**
+ * 運営ログイン等の試行制限用キー。scope ごとに名前空間を分け、値（IP・loginId 等）は HMAC 化して保存する。
+ */
+export function getScopedLimitDocRef(scope: string, value: string): DocumentReference {
+  const db = getFirestore();
+  const docId = `${scope}_${KEY_VERSION}_${hashIp(`${scope}:${value}`)}`;
+  return db.collection(COLLECTION_RATE_LIMITS).doc(docId);
+}
+
+export interface RateLimitPolicy {
+  windowSeconds: number;
+  max: number;
+}
+
+/** 質問投稿: 10分5件 */
+export const SUBMISSION_LIMIT: RateLimitPolicy = { windowSeconds: WINDOW_SECONDS, max: MAX_SUBMISSIONS_PER_WINDOW };
+
 export interface RateLimitCheckResult {
   allowed: boolean;
   retryAfterSeconds?: number;
@@ -86,17 +103,19 @@ export interface RateLimitCheckResult {
 }
 
 /**
- * トランザクション内でレート制限を検査・更新する
- * 10分 (600秒) 以内に最大5件の投稿を許可
+ * トランザクション内でレート制限を検査する（書き込みは呼び出し元が行う）
+ * 既定は質問投稿の 10分 (600秒) 以内に最大5件
  */
 export async function evaluateRateLimitInTransaction(
   transaction: Transaction,
   rateLimitRef: DocumentReference,
-  nowDate: Date
+  nowDate: Date,
+  policy: RateLimitPolicy = SUBMISSION_LIMIT
 ): Promise<RateLimitCheckResult> {
+  const { windowSeconds, max } = policy;
   const snapshot = await transaction.get(rateLimitRef);
   const nowMs = nowDate.getTime();
-  const cutoffMs = nowMs - WINDOW_SECONDS * 1000;
+  const cutoffMs = nowMs - windowSeconds * 1000;
 
   const currentAcceptedAt: Timestamp[] = [];
 
@@ -105,7 +124,7 @@ export async function evaluateRateLimitInTransaction(
     if (Array.isArray(data.acceptedAt)) {
       for (const t of data.acceptedAt) {
         if (t && typeof t.toMillis === 'function') {
-          // 600秒以内のものだけ保持
+          // 窓の期間内のものだけ保持
           if (t.toMillis() > cutoffMs) {
             currentAcceptedAt.push(t);
           }
@@ -114,11 +133,11 @@ export async function evaluateRateLimitInTransaction(
     }
   }
 
-  // 既に直近600秒で5件に達している場合
-  if (currentAcceptedAt.length >= MAX_SUBMISSIONS_PER_WINDOW) {
-    // 一番古い受付時刻から600秒経過するまでの秒数を計算
+  // 既に窓の期間内で上限に達している場合
+  if (currentAcceptedAt.length >= max) {
+    // 一番古い受付時刻から窓の期間が経過するまでの秒数を計算
     const oldestMs = currentAcceptedAt[0].toMillis();
-    const retryAfterSeconds = Math.max(1, Math.ceil((oldestMs + WINDOW_SECONDS * 1000 - nowMs) / 1000));
+    const retryAfterSeconds = Math.max(1, Math.ceil((oldestMs + windowSeconds * 1000 - nowMs) / 1000));
     return {
       allowed: false,
       retryAfterSeconds,
@@ -130,7 +149,7 @@ export async function evaluateRateLimitInTransaction(
   // 許容される場合：新しいタイムスタンプを追加
   const newTimestamp = Timestamp.fromDate(nowDate);
   const updatedAcceptedAt = [...currentAcceptedAt, newTimestamp];
-  const expiresAt = Timestamp.fromMillis(nowMs + WINDOW_SECONDS * 1000);
+  const expiresAt = Timestamp.fromMillis(nowMs + windowSeconds * 1000);
 
   return {
     allowed: true,

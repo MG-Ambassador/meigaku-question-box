@@ -1,92 +1,130 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActionButton } from '@/components/question-box/action-button';
-import GoogleLogin, { googleLogout } from '@/components/google-login';
+import PasswordLogin from '@/components/password-login';
+import PasswordChange from '@/components/password-change';
 import Panel from './panel';
-import { getAdminMe, ApiError } from '@/lib/api-client';
+import { getAdminMe, logout, ApiError, type AdminUser, type AuthSession } from '@/lib/api-client';
+import { clearSession, readSession, writeSession } from '@/lib/admin-session';
 import { resolvePublicPath } from '@/lib/public-url';
+import { GUEST_TOKEN, GUEST_USER, isGuestAdminEnabled } from '@/lib/guest-admin';
 
-type AuthStatus = 'unauthenticated' | 'checking' | 'authenticated' | 'forbidden' | 'error';
-
-interface AdminUser {
-  displayName: string;
-  sub: string;
-  email?: string;
-}
+type AuthStatus = 'checking' | 'unauthenticated' | 'mustChange' | 'authenticated' | 'error';
 
 export default function AdminPage() {
-  const [status, setStatus] = useState<AuthStatus>('unauthenticated');
+  const [status, setStatus] = useState<AuthStatus>('checking');
   const [token, setToken] = useState<string>('');
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [notice, setNotice] = useState<string>('');
+  const restoring = useRef(false);
 
-  const handleGoogleSuccess = useCallback(async (idToken: string) => {
-    setToken(idToken);
+  const signOutLocally = useCallback((message = '') => {
+    clearSession();
+    setToken('');
+    setAdminUser(null);
+    setErrorMessage('');
+    setNotice(message);
+    setStatus('unauthenticated');
+  }, []);
+
+  /** sessionStorage のトークンでログイン状態を復元する（再読み込み時） */
+  const restore = useCallback(async () => {
+    if (restoring.current) return;
+    const saved = readSession();
+    if (!saved) {
+      setStatus('unauthenticated');
+      return;
+    }
+    restoring.current = true;
     setStatus('checking');
     setErrorMessage('');
-
     try {
-      const user = await getAdminMe(idToken);
+      const user = await getAdminMe(saved.token);
+      setToken(saved.token);
       setAdminUser(user);
-      setStatus('authenticated');
-    } catch (err: unknown) {
-      console.error('Admin authentication check failed:', err);
-      if (err instanceof ApiError && err.statusCode === 403) {
-        setStatus('forbidden');
+      setStatus(user.mustChange ? 'mustChange' : 'authenticated');
+    } catch (err) {
+      if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 403)) {
+        signOutLocally('ログインの有効期限が切れました。再度ログインしてください。');
       } else {
         setStatus('error');
-        setErrorMessage(
-          err instanceof Error ? err.message : '認証の確認中にエラーが発生しました。再度お試しください。'
-        );
+        setErrorMessage(err instanceof ApiError ? err.message : '通信できませんでした。接続を確認して再度お試しください。');
       }
+    } finally {
+      restoring.current = false;
     }
+  }, [signOutLocally]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore the saved session from browser storage after hydration.
+    void restore();
+  }, [restore]);
+
+  const handleAuthenticated = useCallback((session: AuthSession) => {
+    writeSession({ token: session.token, expiresAt: session.expiresAt });
+    setToken(session.token);
+    setAdminUser(session.user);
+    setErrorMessage('');
+    setNotice('');
+    setStatus(session.user.mustChange ? 'mustChange' : 'authenticated');
+  }, []);
+
+  const handleGuestEnter = useCallback(() => {
+    clearSession();
+    setToken(GUEST_TOKEN);
+    setAdminUser({ ...GUEST_USER });
+    setErrorMessage('');
+    setNotice('');
+    setStatus('authenticated');
   }, []);
 
   const handleLogout = useCallback(() => {
-    setToken('');
-    setAdminUser(null);
-    setStatus('unauthenticated');
-    setErrorMessage('');
-    googleLogout();
-  }, []);
+    if (token && token !== GUEST_TOKEN) {
+      // サーバー側のセッションも無効化する（失敗しても手元のトークンは破棄する）
+      void logout(token).catch(() => {});
+    }
+    signOutLocally();
+  }, [token, signOutLocally]);
 
-  const handleGoogleError = useCallback((e: Error) => { setStatus('error'); setErrorMessage(e.message); }, []);
+  const handleAuthLost = useCallback(() => {
+    signOutLocally('ログインの有効期限が切れたか、アカウントが変更されました。再度ログインしてください。');
+  }, [signOutLocally]);
 
   // 認証済みの場合：運営ダッシュボードを表示
   if (status === 'authenticated' && adminUser && token) {
-    return <Panel token={token} adminUser={adminUser} onLogout={handleLogout} />;
+    return (
+      <Panel
+        token={token}
+        adminUser={adminUser}
+        onLogout={handleLogout}
+        onSessionChange={handleAuthenticated}
+      />
+    );
   }
 
-  // 未認証・認証チェック中・エラー時のログイン画面
+  // 未認証・確認中・初回パスワード変更・エラー時の画面
   return (
     <main className="operator-entry">
       <div className="login-card surface">
         <span className="eyebrow block text-xs font-semibold tracking-wider text-neutral-500 mb-2">
           MEIGAKU QUESTION BOX · ADMIN
         </span>
-        <h1 className="text-2xl font-bold mb-4">運営管理画面</h1>
+        <h1 className="text-2xl font-bold mb-4">{status === 'mustChange' ? 'パスワードの変更' : '運営管理画面'}</h1>
 
         {status === 'checking' && (
           <div className="py-8">
-            <p className="text-neutral-600">権限を確認しています…</p>
+            <p className="text-neutral-600" role="status">ログイン状態を確認しています…</p>
           </div>
         )}
 
-        {status === 'forbidden' && (
+        {status === 'mustChange' && adminUser && token && (
           <div className="py-4">
-            <div className="notice">
-              <p className="font-semibold">アクセス権限がありません</p>
-              <p className="mt-1">
-                ログインしたGoogleアカウントは運営者リストに登録されていません。運営責任者までお問い合わせください。
-              </p>
-            </div>
-            <ActionButton
-              type="button"
-              tone="secondary"
-              onClick={handleLogout}
-            >
-              別のアカウントでログイン
+            <p className="text-neutral-600 text-sm mb-6">{adminUser.displayName}（{adminUser.loginId || adminUser.sub}）としてログインしています。</p>
+            <PasswordChange token={token} required onChanged={handleAuthenticated} onAuthError={handleAuthLost} />
+            <ActionButton type="button" tone="quiet" onClick={handleLogout}>
+              ログアウト
             </ActionButton>
           </div>
         )}
@@ -94,28 +132,38 @@ export default function AdminPage() {
         {status === 'error' && (
           <div className="py-4">
             <div className="notice notice-error" role="alert">
-              <p className="font-semibold">認証エラー</p>
+              <p className="font-semibold">ログイン状態を確認できませんでした</p>
               <p className="mt-1">{errorMessage}</p>
             </div>
-            <ActionButton
-              type="button"
-              tone="secondary"
-              onClick={handleLogout}
-            >
-              もう一度ログインを試す
+            <ActionButton type="button" onClick={() => void restore()}>
+              再試行
+            </ActionButton>
+            <ActionButton type="button" tone="secondary" onClick={handleLogout}>
+              ログアウトしてログイン画面へ
             </ActionButton>
           </div>
         )}
 
         {status === 'unauthenticated' && (
           <div className="py-4">
+            {notice && (
+              <p className="notice" role="status">{notice}</p>
+            )}
             <p className="text-neutral-600 text-sm mb-6">
-              許可されたGoogleアカウントでログインして、届いた質問の閲覧やイベント管理を行います。
+              運営IDとパスワードでログインして、届いた質問の閲覧やイベント管理を行います。アカウントは運営責任者が発行します。
             </p>
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-            />
+            <PasswordLogin onSuccess={handleAuthenticated} />
+          </div>
+        )}
+
+        {isGuestAdminEnabled() && (status === 'unauthenticated' || status === 'error') && (
+          <div className="py-2">
+            <ActionButton type="button" tone="secondary" onClick={handleGuestEnter}>
+              ゲスト管理者として入る
+            </ActionButton>
+            <p className="mt-2 text-xs text-neutral-500">
+              開発確認用です。ダミーデータのみを表示し、実データには接続しません（変更は再読み込みで元に戻ります）。
+            </p>
           </div>
         )}
 

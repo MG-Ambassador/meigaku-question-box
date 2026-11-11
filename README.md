@@ -26,7 +26,7 @@
 以前の Cloudflare (D1/Vinext) 基盤から **GitHub Pages ＋ Google Cloud Run ＋ Cloud Firestore** に刷新され、高い耐障害性・セキュリティと、維持管理の手軽さを両立した構成になっています。
 
 - **来場者（質問者）**: ログイン不要。イベントごとのルームURL（`/?room=<id>`）やQRコードから即座に匿名投稿が可能。
-- **運営スタッフ（アンバサダー・管理者）**: Googleアカウント（Google Identity Services / GIS）による安全な認証を経て、リアルタイム集計・質問一覧・お気に入り管理・ルーム設定等を利用可能。
+- **運営スタッフ（アンバサダー・管理者）**: 運営責任者が発行した **運営ID・パスワード** でログインし、リアルタイム集計・質問一覧・お気に入り管理・ルーム設定等を利用可能。
 
 ---
 
@@ -37,7 +37,7 @@
 | サービス | 公開URL | 用途・説明 |
 |---|---|---|
 | **質問投稿画面（フロントエンド）** | [https://mg-ambassador.github.io/meigaku-question-box/](https://mg-ambassador.github.io/meigaku-question-box/) | 来場者・一般向け（※ 実際の投稿には `?room=<イベントID>` が必要） |
-| **運営管理画面** | [https://mg-ambassador.github.io/meigaku-question-box/admin/](https://mg-ambassador.github.io/meigaku-question-box/admin/) | 運営スタッフ専用管理画面（Google ログイン認証が必要） |
+| **運営管理画面** | [https://mg-ambassador.github.io/meigaku-question-box/admin/](https://mg-ambassador.github.io/meigaku-question-box/admin/) | 運営スタッフ専用管理画面（運営ID・パスワードでログイン） |
 
 > **セキュリティ上の注意**:
 > バックエンド API（Cloud Run）のエンドポイントは、フロントエンド内部からの通信に限定して利用されます。直接のアクセスによる DoS 攻撃やリクエスト不正・不要なリソース消費を防ぐため、直接の API URL やヘルスチェックエンドポイントは公開せず、GitHub Actions の環境変数（`NEXT_PUBLIC_API_BASE_URL`）および Cloud Run 設定で安全に管理されています。
@@ -53,7 +53,8 @@
 - **冪等な再送制御**: 通信不良時の再送（`requestId` による冪等保証）により重複投稿を防止。
 
 ### 運営者向け（管理画面 `/admin`）
-- **Google ログイン認可**: 許可リスト（`ADMIN_IDENTITIES` に登録された Google `sub` 識別子）に基づく厳格なアクセス制御。
+- **運営ID・パスワードによるログイン**: 運営責任者が管理画面の「担当者を管理」から担当者を追加し、仮パスワードを発行。初回ログイン時に本人がパスワードを変更（15〜128文字）。ログインはタブを閉じるまで維持（最長8時間）。
+- **担当者管理（運営責任者のみ）**: 担当者の追加、仮パスワード再発行、利用停止・再開。再発行・停止・パスワード変更をすると、対象者のログイン中の端末はすべて即時に無効化。
 - **イベント（ルーム）管理**:
   - イベント新規作成、名称・日時/会場の編集（楽観的ロック `version` による409競合検知付き）
   - 受付中／受付停止およびアクティブ／アーカイブ／ごみ箱のライフサイクル管理
@@ -68,7 +69,7 @@
 
 ### セキュリティ & 信頼性（多層防御）
 - **ゼロトラスト Firestore 構成**: クライアント（ブラウザ）からの直接接続は Firestore Security Rules で全拒否（`allow read, write: if false;`）。Cloud Run の実行サービスアカウント（ADC / IAM）経由でのみアクセスを許可。
-- **運営者認証・厳格な認可**: Google Identity Services (GIS) による ID トークンをバックエンドで Google 公開鍵および `GOOGLE_CLIENT_ID` により完全検証。許可リスト（`ADMIN_IDENTITIES` の Google `sub` 識別子）に合致する運営者のみに管理権限を限定。
+- **運営者認証・厳格な認可**: パスワードは scrypt（N=16384, r=8, p=5、個別salt）でハッシュ化して Firestore に保存し、平文は保存しない。ログイン時に 256bit のランダムなセッショントークンを発行し、DB には SHA-256 のみ保存（`Authorization: Bearer` で送信）。未登録ID・誤パスワード・利用停止は同じ応答とし、試行は同一IPで10分30回・同一IDで15分10回まで。初回パスワード変更前は運営APIを拒否。
 - **プライバシー保護型 IP 連投制限**: 信頼されたリバースプロキシ（Cloud Run Google Front End）が付与したクライアントIPを `RATE_LIMIT_SECRET` による HMAC-SHA256 でハッシュ化。生の IP アドレスは DB に保存せず、Firestore トランザクションと TTL（`expiresAt`）を用いて 10 分間の投稿数を制限。
 - **改ざん防止カーソル**: 質問一覧のページネーション情報（カーソル）に `CURSOR_SECRET` による HMAC-SHA256 署名を付与し、クライアントによるシーケンス番号やパラメータの改ざんを検知・拒否。
 - **API エンドポイントの多層防御**:
@@ -87,11 +88,10 @@
 [ 来場者 / 運営者ブラウザ ]
       │
       ├─ HTML / JS / CSS ────▶ GitHub Pages (Next.js 静的エクスポート)
-      ├─ 運営認証 ────────────▶ Google Identity Services (GIS)
       │
       └─ HTTPS / REST API ───▶ Google Cloud Run (Express API Server)
                                     │
-                                    ├─ Google IDトークン検証 (google-auth-library)
+                                    ├─ 運営ID・パスワード検証 (scrypt) / セッショントークン照合
                                     ├─ 入力検証 (Zod) / レート制限 / 署名付きカーソル
                                     │
                                     ▼ ADC (Application Default Credentials)
@@ -99,8 +99,10 @@
                                     ├─ events (イベント情報)
                                     ├─ questions (質問データ)
                                     ├─ eventStats (集計カウンター)
-                                    ├─ rateLimits (IP制限情報)
-                                    └─ favorites (運営者お気に入り)
+                                    ├─ rateLimits (IP制限・ログイン試行制限)
+                                    ├─ userFavorites (運営者お気に入り)
+                                    ├─ operators (運営アカウント)
+                                    └─ operatorSessions (ログインセッション)
 ```
 
 ---
@@ -115,7 +117,7 @@
 | **バックエンド API** | Node.js 24, Express, TypeScript, tsx, Zod, Helmet, CORS |
 | **API ホスティング** | Google Cloud Run (Docker コンテナ) |
 | **データベース** | Google Cloud Firestore (Native mode, Standard edition) |
-| **認証方式** | Google Identity Services (GIS) / Google ID Token 検証 (`google-auth-library`) |
+| **認証方式** | 運営ID・パスワード（scrypt ハッシュ）＋ Bearer セッショントークン（Firestore 管理） |
 | **テスト・品質検証** | Node.js Test Runner, Playwright (E2E / ギャラリー), ESLint, TypeScript |
 | **CI / CD** | GitHub Actions (テスト・ビルド検証、Cloud Run 自動デプロイ、Pages 自動デプロイ) |
 
@@ -130,18 +132,23 @@
 │   ├── admin/                # 運営管理画面 (/admin)
 │   └── globals.css           # グローバルスタイル (Tailwind CSS + UIデザイントークン)
 ├── components/               # Reactコンポーネント
-│   ├── google-login.tsx      # Google Identity Services ログインボタン
+│   ├── password-login.tsx    # 運営ID・パスワードのログインフォーム
+│   ├── password-change.tsx   # パスワード変更フォーム（初回変更・任意変更）
 │   ├── question-box/         # 質問箱・管理画面専用UIコンポーネント群 (13種プリミティブ)
 │   └── ui/                   # 補助UIパーツ
 ├── server/                   # Cloud Run バックエンド API (Express)
 │   ├── src/
 │   │   ├── app.ts            # Express アプリ定義・ミドルウェア
-│   │   ├── auth.ts           # Google トークン検証・運営者認可・本番環境変数検証
+│   │   ├── auth.ts           # セッション照合・運営者/責任者の認可・本番環境変数検証
+│   │   ├── operators.ts      # ログイン・ログアウト・パスワード変更・担当者管理ハンドラ
+│   │   ├── password.ts       # scrypt によるパスワードハッシュ・ID/パスワード規則
+│   │   ├── sessions.ts       # セッショントークンの発行・照合・無効化
 │   │   ├── events.ts         # イベント操作ハンドラ
 │   │   ├── questions.ts      # 質問投稿・冪等処理ハンドラ
 │   │   ├── report.ts         # 集計・質問一覧・署名付きカーソル処理
 │   │   ├── rate-limit.ts     # IPハッシュ連投制限
 │   │   └── firestore.ts      # Firestore クライアント初期化
+│   ├── scripts/create-operator.ts # 最初の運営責任者の作成・責任者パスワードの復旧 CLI
 │   ├── test/                 # サーバー側単体・結合テスト
 │   └── Dockerfile            # Cloud Run デプロイ用コンテナ定義 (Node.js 24)
 ├── lib/                      # フロントエンド共通ライブラリ (APIクライアント等)
@@ -185,7 +192,6 @@ npm --prefix server ci
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 NEXT_PUBLIC_BASE_PATH=
 ```
 
@@ -197,8 +203,6 @@ PORT=8080
 NODE_ENV=development
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 FIRESTORE_DATABASE_ID=(default)
-GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
-ADMIN_IDENTITIES=[{"sub":"your-google-sub-id","displayName":"運営担当者"}]
 RATE_LIMIT_SECRET=dev-rate-limit-secret-string
 CURSOR_SECRET=dev-cursor-secret-at-least-32-chars
 TRUSTED_PROXY_HOPS=1
@@ -220,6 +224,19 @@ npm --prefix server run dev
 # ターミナル 2: フロントエンド (ポート 3000)
 npm run dev
 ```
+
+### 4. 最初の運営責任者を作成
+
+運営画面にログインするには、運営責任者（owner）のアカウントが1つ必要です。`server/.env` の接続先（またはエミュレータ）に対して作成します。
+
+```bash
+# 確認のみ（書き込みなし）
+npm run operator:create -- --login-id mga-owner --display-name 運営責任者 --role owner
+# 作成（仮パスワードが一度だけ表示されます）
+npm run operator:create -- --login-id mga-owner --display-name 運営責任者 --role owner --execute
+```
+
+初回ログイン時にパスワード変更を求められます。以後の担当者は、運営責任者が管理画面の「アカウント → 担当者を管理」から追加します。運営責任者自身がパスワードを忘れた場合は `--reset --execute` で仮パスワードを再発行します（公開画面には無認証の再発行機能はありません）。
 
 起動後、ブラウザで以下のURLにアクセスします：
 - 質問投稿画面: `http://localhost:3000/?room=<テスト用イベントID>`
@@ -284,7 +301,6 @@ GitHub Actions により、`main` ブランチへのプッシュで自動的に�
 | 変数名 | 説明 | 設定例 |
 |---|---|---|
 | `NEXT_PUBLIC_API_BASE_URL` | Cloud Run API のベースURL（※末尾スラッシュなし） | `https://<your-cloud-run-service>.a.run.app` |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google OAuth 2.0 WebクライアントID | `xxxx.apps.googleusercontent.com` |
 | `NEXT_PUBLIC_BASE_PATH` | GitHub Pages の公開サブパス（ルート公開時は空） | `/meigaku-question-box` |
 
 ### バックエンド (Cloud Run 環境変数 / Secret Manager)
@@ -294,9 +310,7 @@ GitHub Actions により、`main` ブランチへのプッシュで自動的に�
 | `NODE_ENV` | 実行環境（本番時は必須環境変数の起動時検証を有効化） | `production` |
 | `GOOGLE_CLOUD_PROJECT` | GCP プロジェクトID | `<your-gcp-project-id>` |
 | `FIRESTORE_DATABASE_ID` | Firestore データベースID | `(default)` |
-| `GOOGLE_CLIENT_ID` | Google ID トークン検証用クライアントID（**本番必須**） | `xxxx.apps.googleusercontent.com` |
-| `ADMIN_IDENTITIES` | 運営者許可リスト（JSON配列または `sub` カンマ区切り、**本番必須**） | `[{"sub":"12345...","displayName":"運営担当"}]` |
-| `RATE_LIMIT_SECRET` | IPアドレスハッシュ用 HMAC 秘密鍵（要秘匿・**本番必須**） | `32文字以上の安全なランダム文字列` |
+| `RATE_LIMIT_SECRET` | IPアドレス・ログイン試行キーのハッシュ用 HMAC 秘密鍵（要秘匿・**本番必須**） | `32文字以上の安全なランダム文字列` |
 | `CURSOR_SECRET` | ページネーションカーソル署名用 HMAC 秘密鍵（要秘匿・**本番必須**） | `32文字以上の安全なランダム文字列` |
 | `TRUSTED_PROXY_HOPS` | 信頼するリバースプロキシのホップ数（省略時 `1`） | `1` |
 | `ALLOWED_ORIGINS` | CORS 許可オリジン（カンマ区切り、末尾スラッシュなし） | `https://<org>.github.io` |
@@ -304,7 +318,7 @@ GitHub Actions により、`main` ブランチへのプッシュで自動的に�
 > [!CAUTION]
 > **機密情報・シークレットの管理について**:
 > - `RATE_LIMIT_SECRET` および `CURSOR_SECRET` はシステムの改ざん防止・プライバシー保護に関わる重要シークレットです。`NODE_ENV=production` 環境では未設定またはデフォルト値の場合にサーバーが起動を拒否します。GitHub リポジトリや公開設定ファイルには絶対にコミットせず、Google Cloud Run の Secret Manager 連携または GitHub Actions Secrets にて厳重に管理してください。
-> - `ADMIN_IDENTITIES` には運営スタッフの Google `sub` 識別子や表示名を設定するため、公開リポジトリ上に実データを記載しないよう注意してください。
+> - 運営アカウント（ID・パスワードハッシュ）は Firestore の `operators` コレクションで管理し、環境変数には置きません。仮パスワードは発行時に一度だけ表示されるので、本人へ直接渡してください。
 
 ---
 

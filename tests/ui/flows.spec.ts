@@ -2,22 +2,31 @@ import { test, expect, type Page } from '@playwright/test';
 
 const event = { id: 'campus', title: 'オープンキャンパス', date: '10月10日 13:00〜 白金キャンパス', open: 1, version: 1 };
 async function fixture(page: Page, count = 150) {
-  const state = { event: { ...event }, count, posted: [] as Record<string, unknown>[], loseResponse: false, expireCursor: false, conflict: false, polls: 0, denyAuth: false, failReport: false, favoriteRevision: 0, favorites: new Map<string, boolean>() };
+  const state = { event: { ...event }, count, posted: [] as Record<string, unknown>[], loseResponse: false, expireCursor: false, conflict: false, polls: 0, denyAuth: false, failReport: false, favoriteRevision: 0, favorites: new Map<string, boolean>(), mustChange: false, logins: 0, logouts: 0, passwordChanges: [] as Record<string, unknown>[] };
   await page.addInitScript(() => {
-    // Test-only GIS stand-in. Production authentication is unchanged.
-    let callback: (response: { credential: string }) => void;
-    window.google = { accounts: { id: {
-      initialize: (options) => { callback = options.callback; },
-      renderButton: (parent) => { parent.replaceChildren(); const button = document.createElement('button'); button.textContent = 'テスト用Googleログイン'; button.onclick = () => callback({ credential: 'test-token' }); parent.appendChild(button); },
-      disableAutoSelect: () => {},
-    } } };
     Object.defineProperty(navigator, 'share', { configurable: true, value: async (data: ShareData) => { sessionStorage.setItem('test-shared', JSON.stringify(data)); } });
     Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
   });
   await page.route('**/api/**', async (route) => {
     const request = route.request(); const url = new URL(request.url());
     const json = (data: unknown, status = 200) => route.fulfill({ status, json: data });
-    if (url.pathname === '/api/admin/me') return json({ sub: 'test', displayName: '運営担当' });
+    const user = () => ({ sub: 'test', loginId: 'test', displayName: '運営担当', role: 'operator', mustChange: state.mustChange });
+    const session = (token: string) => ({ token, expiresAt: Date.now() + 8 * 3600 * 1000, user: user() });
+    if (url.pathname === '/api/auth/login') {
+      const body = request.postDataJSON();
+      if (body.password !== TEST_PASSWORD) return json({ error: { code: 'INVALID_CREDENTIALS', message: '運営IDまたはパスワードが正しくありません。' } }, 401);
+      state.logins++;
+      return json(session(TEST_TOKEN));
+    }
+    if (url.pathname === '/api/auth/logout') { state.logouts++; return json({ ok: true }); }
+    if (url.pathname === '/api/auth/password') {
+      state.passwordChanges.push(request.postDataJSON()); state.mustChange = false;
+      return json(session(NEXT_TOKEN));
+    }
+    if (url.pathname === '/api/admin/me') {
+      if (state.denyAuth) return json({ error: { code: 'UNAUTHENTICATED', message: 'expired' } }, 401);
+      return json(user());
+    }
     if (url.pathname === '/api/admin/events' && request.method() === 'GET') return json([state.event, { ...event, id: 'other', title: '別のイベント' }]);
     if (url.pathname === '/api/events' && request.method() === 'POST') {
       const body = request.postDataJSON();
@@ -74,7 +83,15 @@ async function fixture(page: Page, count = 150) {
   });
   return state;
 }
-async function login(page: Page) { await page.goto('admin/'); await page.getByRole('button', { name: 'テスト用Googleログイン' }).click(); await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible(); }
+const TEST_PASSWORD = 'correct horse battery staple';
+const TEST_TOKEN = 'a'.repeat(64);
+const NEXT_TOKEN = 'b'.repeat(64);
+async function submitLogin(page: Page, password = TEST_PASSWORD) {
+  await page.getByLabel('運営ID').fill('test');
+  await page.getByLabel('パスワード', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'ログイン', exact: true }).click();
+}
+async function login(page: Page) { await page.goto('admin/'); await submitLogin(page); await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible(); }
 
 async function startWriting(page: Page) {
   await expect(page.locator('.question-form')).toHaveAttribute('aria-busy', 'false');
@@ -185,7 +202,7 @@ test('QR and sharing fallback, mobile widths and reduced motion', async ({ page 
 
 test('auth expiry returns to login and offline state prevents sending', async ({ page, context }) => {
   const state = await fixture(page); await login(page); state.denyAuth = true;
-  await expect(page.getByRole('button', { name: 'テスト用Googleログイン' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible({ timeout: 10000 });
   await page.goto('?event=campus'); await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('オフライン時の質問');
   await reviewQuestion(page);
   await context.setOffline(true); await expect(page.getByRole('button', { name: '質問を送る', exact: true })).toBeDisabled();
@@ -867,7 +884,7 @@ test('R06: new-room and logout paths retain edits on cancel and save or discard 
   await page.getByRole('button', { name: 'アカウント', exact: true }).click();
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
   await dialog.getByRole('button', { name: '破棄してログアウト' }).click();
-  await expect(page.getByRole('button', { name: 'テスト用Googleログイン' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
   expect(state.event.title).toBe('新規作成前に保存');
 });
 
@@ -892,4 +909,43 @@ test('wizard validates locally, preserves edits when going back, and sends only 
   await foldAndSend(page);
   expect(state.posted).toHaveLength(1);
   await expect(page.getByText('この画面は閉じて大丈夫です。', { exact: false })).toBeVisible();
+});
+
+test('password login rejects wrong credentials, survives reload and logout clears the session', async ({ page }) => {
+  const state = await fixture(page);
+  await page.goto('admin/');
+  await submitLogin(page, 'wrong password value');
+  await expect(page.locator('.notice-error[role=alert]')).toContainText('運営IDまたはパスワードが正しくありません。');
+  await expect(page.getByLabel('パスワード', { exact: true })).toHaveValue('');
+  await submitLogin(page);
+  await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible();
+  expect(state.logins).toBe(1);
+  await page.getByRole('button', { name: 'アカウント', exact: true }).click();
+  await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
+  await expect.poll(() => state.logouts).toBe(1);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
+});
+
+test('first login requires a password change before the dashboard opens', async ({ page }) => {
+  const state = await fixture(page); state.mustChange = true;
+  await page.goto('admin/');
+  await submitLogin(page);
+  await expect(page.getByRole('heading', { name: 'パスワードの変更' })).toBeVisible();
+  await page.getByLabel('仮パスワード').fill(TEST_PASSWORD);
+  await page.getByLabel('新しいパスワード', { exact: true }).fill('short');
+  await page.getByLabel('新しいパスワード（確認）').fill('short');
+  await page.getByRole('button', { name: 'パスワードを変更する' }).click();
+  await expect(page.locator('.notice-error[role=alert]')).toContainText('15〜128文字');
+  expect(state.passwordChanges).toHaveLength(0);
+  await page.getByLabel('新しいパスワード', { exact: true }).fill('a much longer pass phrase');
+  await page.getByLabel('新しいパスワード（確認）').fill('a much longer pass phrase');
+  await page.getByRole('button', { name: 'パスワードを変更する' }).click();
+  await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible();
+  expect(state.passwordChanges).toEqual([{ currentPassword: TEST_PASSWORD, newPassword: 'a much longer pass phrase' }]);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /届いた質問/ })).toBeVisible();
 });
