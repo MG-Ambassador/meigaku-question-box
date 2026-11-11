@@ -119,21 +119,15 @@ describe('P1 Questions API - Unit Tests', () => {
     const prevEnv = process.env.NODE_ENV;
     const prevRate = process.env.RATE_LIMIT_SECRET;
     const prevCursor = process.env.CURSOR_SECRET;
-    const prevClient = process.env.GOOGLE_CLIENT_ID;
-    const prevAdmins = process.env.ADMIN_IDENTITIES;
 
     try {
       (process.env as any).NODE_ENV = 'production';
       delete process.env.RATE_LIMIT_SECRET;
       delete process.env.CURSOR_SECRET;
-      delete process.env.GOOGLE_CLIENT_ID;
-      delete process.env.ADMIN_IDENTITIES;
 
       assert.throws(() => validateProductionEnv(), /Required production environment variables are missing/);
       assert.throws(() => hashIp('192.0.2.1'), /MISSING_PRODUCTION_SECRET/);
 
-      process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
-      process.env.ADMIN_IDENTITIES = '[{"sub":"123","displayName":"Admin"}]';
       process.env.RATE_LIMIT_SECRET = 'prod-strong-rate-secret-key';
       process.env.CURSOR_SECRET = 'prod-strong-cursor-secret-key';
 
@@ -145,10 +139,6 @@ describe('P1 Questions API - Unit Tests', () => {
       else process.env.RATE_LIMIT_SECRET = prevRate;
       if (prevCursor === undefined) delete process.env.CURSOR_SECRET;
       else process.env.CURSOR_SECRET = prevCursor;
-      if (prevClient === undefined) delete process.env.GOOGLE_CLIENT_ID;
-      else process.env.GOOGLE_CLIENT_ID = prevClient;
-      if (prevAdmins === undefined) delete process.env.ADMIN_IDENTITIES;
-      else process.env.ADMIN_IDENTITIES = prevAdmins;
     }
   });
 });

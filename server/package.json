@@ -7,14 +7,14 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test test/**/*.test.ts"
+    "test": "tsx --test test/**/*.test.ts",
+    "operator:create": "tsx scripts/create-operator.ts"
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.11.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "google-auth-library": "^9.15.1",
     "helmet": "^8.0.0",
     "zod": "^3.24.2"
   },

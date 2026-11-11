@@ -2,6 +2,8 @@
  * Cloud Run バックエンド API と通信するためのフロントエンドクライアント
  */
 
+import { GUEST_TOKEN, guestFetch } from './guest-admin.ts';
+
 export interface ApiErrorDetail {
   code: string;
   message: string;
@@ -83,6 +85,10 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
+  // ゲスト管理者（開発確認用）: サーバーへ通信せずダミーデータで応答する
+  if (options.token === GUEST_TOKEN) {
+    return guestFetch<T>(path, { method: options.method, body: options.body });
+  }
   const baseUrl = getApiBaseUrl();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const fullUrl = `${baseUrl}${normalizedPath}`;
@@ -173,11 +179,96 @@ export async function submitQuestion(params: {
   });
 }
 
+export type OperatorRole = 'owner' | 'operator';
+
+export interface AdminUser {
+  displayName: string;
+  sub: string;
+  loginId?: string;
+  role?: OperatorRole;
+  mustChange?: boolean;
+}
+
+export interface AuthSession {
+  token: string;
+  expiresAt: number;
+  user: AdminUser;
+}
+
+export interface OperatorItem {
+  loginId: string;
+  displayName: string;
+  role: OperatorRole;
+  active: boolean;
+  mustChange: boolean;
+  createdAt: number;
+}
+
 /**
- * 運営：Google IDトークンで権限・表示名を確認
+ * 運営：運営ID・パスワードでログインし、セッショントークンを受け取る
  */
-export async function getAdminMe(token: string): Promise<{ displayName: string; sub: string; email?: string }> {
-  return apiFetch<{ displayName: string; sub: string; email?: string }>('/api/admin/me', { token });
+export function login(loginId: string, password: string): Promise<AuthSession> {
+  return apiFetch<AuthSession>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ loginId, password }),
+  });
+}
+
+/**
+ * 運営：サーバー側のセッションを無効化する
+ */
+export function logout(token: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>('/api/auth/logout', { method: 'POST', token, body: '{}' });
+}
+
+/**
+ * 運営：自分のパスワードを変更する（他端末のログインは無効になり、新しいトークンが返る）
+ */
+export function changePassword(token: string, currentPassword: string, newPassword: string): Promise<AuthSession> {
+  return apiFetch<AuthSession>('/api/auth/password', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+/**
+ * 運営：セッショントークンで権限・表示名を確認
+ */
+export async function getAdminMe(token: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>('/api/admin/me', { token });
+}
+
+/**
+ * 運営責任者：担当者一覧
+ */
+export function listOperators(token: string, signal?: AbortSignal): Promise<OperatorItem[]> {
+  return apiFetch<OperatorItem[]>('/api/admin/operators', { token, signal });
+}
+
+/**
+ * 運営責任者：担当者を追加（仮パスワードはこの応答でのみ受け取れる）
+ */
+export function createOperator(
+  token: string,
+  data: { loginId: string; displayName: string }
+): Promise<{ loginId: string; displayName: string; temporaryPassword: string }> {
+  return apiFetch('/api/admin/operators', { method: 'POST', token, body: JSON.stringify(data) });
+}
+
+/**
+ * 運営責任者：仮パスワード再発行・利用停止・利用再開
+ */
+export function operatorAction(
+  token: string,
+  loginId: string,
+  action: 'reset' | 'disable' | 'enable'
+): Promise<{ ok: boolean; loginId: string; active: boolean; mustChange: boolean; temporaryPassword?: string }> {
+  return apiFetch(`/api/admin/operators/${encodeURIComponent(loginId)}/${action}`, {
+    method: 'POST',
+    token,
+    body: '{}',
+  });
 }
 
 /**

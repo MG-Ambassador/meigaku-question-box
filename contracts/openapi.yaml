@@ -34,7 +34,7 @@ paths:
   /api/events:
     get:
       summary: 受付中イベント一覧の取得
-      description: 来場者向けに、現在質問受付中（open: true）のイベント一覧を返す。
+      description: '来場者向けに、現在質問受付中（open: true）のイベント一覧を返す。'
       responses:
         '200':
           description: 受付中イベントの配列
@@ -50,7 +50,7 @@ paths:
       summary: イベントの新規作成
       description: 運営担当者が新しいイベントを作成する。初期集計（eventStats）および監査ログを同時作成する。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       requestBody:
         required: true
         content:
@@ -105,7 +105,7 @@ paths:
       summary: イベント設定の更新
       description: 運営担当者がイベントのタイトル、日時、受付状態を更新する。楽観的ロック（version）を使用。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       parameters:
         - name: id
           in: path
@@ -147,7 +147,7 @@ paths:
       summary: イベント・ルームの状態遷移（アーカイブ・ごみ箱・復元）
       description: 運営担当者がイベントの状態（通常/アーカイブ/ごみ箱）を安全に遷移させる。ごみ箱からの復元先はアーカイブ。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       parameters:
         - name: id
           in: path
@@ -237,9 +237,9 @@ paths:
   /api/admin/me:
     get:
       summary: 運営ユーザーの認可確認
-      description: 送信された Google ID トークンを検証し、許可された運営者リストと照合して表示名を返す。
+      description: セッショントークンを検証し、ログイン中の運営者情報を返す。初回パスワード変更前（mustChange=true）でも参照できる。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       responses:
         '200':
           description: 認証成功
@@ -257,7 +257,7 @@ paths:
       summary: イベント一覧の取得（管理用）
       description: 運営担当者向けに、閉鎖中・アーカイブ・ごみ箱を含むイベント一覧を取得する。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       parameters:
         - name: status
           in: query
@@ -287,7 +287,7 @@ paths:
       summary: 質問のお気に入り登録・解除（個人用）
       description: ログイン中の担当者専用のお気に入り状態を希望値に更新する。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       parameters:
         - name: id
           in: path
@@ -340,7 +340,7 @@ paths:
       summary: イベント集計および質問一覧の取得
       description: 選択されたイベントの集計情報（合計、テーマ別、流入元別、日別）および質問一覧を取得する。検索条件（テーマ、並び順、お気に入り、日別、流入元）およびカーソルページネーション対応。
       security:
-        - GoogleIdToken: []
+        - SessionToken: []
       parameters:
         - name: event
           in: query
@@ -418,13 +418,199 @@ paths:
         '503':
           $ref: '#/components/responses/StorageUnavailable'
 
+  /api/auth/login:
+    post:
+      summary: 運営ログイン
+      description: 運営ID・パスワードを検証してセッショントークンを発行する。未登録ID・誤パスワード・利用停止はすべて同じ 401。試行は同一IPで10分30回、同一IDで15分10回まで。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginId, password]
+              properties:
+                loginId: { type: string, maxLength: 100, example: mga-staff }
+                password: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: ログイン成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: 運営IDまたはパスワードが正しくない（INVALID_CREDENTIALS）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/logout:
+    post:
+      summary: 運営ログアウト
+      description: 現在のセッションを無効化する。
+      security:
+        - SessionToken: []
+      responses:
+        '200':
+          description: ログアウト完了
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/auth/password:
+    post:
+      summary: パスワード変更
+      description: 現在のパスワードを確認して変更する（15〜128文字、現在と異なること）。全端末のセッションを無効化し、新しいセッションを返す。初回パスワード変更前でも利用できる。
+      security:
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, maxLength: 128 }
+                newPassword: { type: string, minLength: 15, maxLength: 128 }
+      responses:
+        '200':
+          description: 変更成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          description: 規則違反（VALIDATION_ERROR）または現在のパスワード誤り（INVALID_CURRENT_PASSWORD）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          description: 変更中にアカウントが更新された（ACCOUNT_CHANGED）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/admin/operators:
+    get:
+      summary: 担当者一覧（運営責任者専用）
+      security:
+        - SessionToken: []
+      responses:
+        '200':
+          description: 担当者の配列（パスワードハッシュは含まない）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Operator'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: 担当者の追加（運営責任者専用）
+      description: 一般担当者を作成し、仮パスワードをこの応答で一度だけ返す。担当者は初回ログイン時にパスワード変更が必要。
+      security:
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginId, displayName]
+              properties:
+                loginId: { type: string, pattern: '^[a-zA-Z0-9_-]{3,40}$' }
+                displayName: { type: string, maxLength: 60 }
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [loginId, displayName, temporaryPassword]
+                properties:
+                  loginId: { type: string }
+                  displayName: { type: string }
+                  temporaryPassword: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 運営IDが既に使われている（OPERATOR_EXISTS）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/admin/operators/{id}/{action}:
+    post:
+      summary: 仮パスワード再発行・利用停止・利用再開（運営責任者専用）
+      description: 一般担当者だけが対象。自分自身と他の運営責任者は変更できない。いずれも対象者の全セッションを無効化する。
+      security:
+        - SessionToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [reset, disable, enable]
+      responses:
+        '200':
+          description: 更新成功（reset のときのみ temporaryPassword を含む）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, loginId, active, mustChange]
+                properties:
+                  ok: { type: boolean }
+                  loginId: { type: string }
+                  active: { type: boolean }
+                  mustChange: { type: boolean }
+                  temporaryPassword: { type: string }
+        '400':
+          description: 不正な操作（INVALID_ACTION）または自分自身への操作（SELF_OPERATION）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 担当者が見つからない（OPERATOR_NOT_FOUND）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
 components:
   securitySchemes:
-    GoogleIdToken:
+    SessionToken:
       type: http
       scheme: bearer
-      bearerFormat: JWT
-      description: Google Identity Services (GIS) で取得した Google ID トークン
+      bearerFormat: opaque
+      description: POST /api/auth/login で発行される運営セッショントークン（64桁の16進数、有効期限8時間）。サーバーにはSHA-256のみ保存する。
 
   schemas:
     Event:
@@ -537,17 +723,48 @@ components:
 
     AdminMeResponse:
       type: object
-      required: [displayName, sub]
+      required: [displayName, sub, loginId, role, mustChange]
       properties:
         displayName:
           type: string
           example: 運営担当者
         sub:
           type: string
-          example: '123456789012345678901'
-        email:
+          description: 運営ID（loginId と同じ値。監査ログ・お気に入りの識別子）
+          example: mga-staff
+        loginId:
           type: string
-          example: admin@example.com
+          example: mga-staff
+        role:
+          type: string
+          enum: [owner, operator]
+        mustChange:
+          type: boolean
+          description: true の間は初回パスワード変更が必要で、他の運営APIは 403 PASSWORD_CHANGE_REQUIRED
+
+    AuthSession:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: 'セッショントークン（Authorization: Bearer に付けて送る）'
+        expiresAt:
+          type: integer
+          description: 有効期限（UNIXミリ秒）
+        user:
+          $ref: '#/components/schemas/AdminMeResponse'
+
+    Operator:
+      type: object
+      required: [loginId, displayName, role, active, mustChange, createdAt]
+      properties:
+        loginId: { type: string }
+        displayName: { type: string }
+        role: { type: string, enum: [owner, operator] }
+        active: { type: boolean }
+        mustChange: { type: boolean }
+        createdAt: { type: integer }
 
     QuestionRow:
       type: object
@@ -655,6 +872,17 @@ components:
               type: integer
 
   responses:
+    RateLimited:
+      description: 試行回数の上限超過（RATE_LIMITED）
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: 再試行できるまでの秒数
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
     ValidationError:
       description: 入力値不正
       content:
@@ -668,7 +896,7 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
     Forbidden:
-      description: 運営権限なし（未許可Googleアカウント）
+      description: 権限なし（初回パスワード変更前、または運営責任者専用の操作）
       content:
         application/json:
           schema:

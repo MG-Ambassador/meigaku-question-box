@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   FolderArchive,
+  KeyRound,
   LayoutGrid,
   LogOut,
   MessageCircle,
@@ -11,8 +12,12 @@ import {
   Settings2,
   Share2,
   UserRound,
+  UsersRound,
 } from 'lucide-react';
-import { getAdminEvents, ApiError, type EventItem } from '@/lib/api-client';
+import { getAdminEvents, ApiError, type AdminUser, type AuthSession, type EventItem } from '@/lib/api-client';
+import { GUEST_TOKEN } from '@/lib/guest-admin';
+import PasswordChange from '@/components/password-change';
+import { OperatorManager } from '@/components/question-box/operator-manager';
 import { ActionButton } from '@/components/question-box/action-button';
 import { AppSheet } from '@/components/question-box/app-sheet';
 import { ConfirmDialog } from '@/components/question-box/confirm-dialog';
@@ -24,8 +29,10 @@ import { ComponentGallery } from '@/components/dev/component-gallery';
 
 interface PanelProps {
   token: string;
-  adminUser: { displayName: string; sub: string; email?: string };
+  adminUser: AdminUser;
   onLogout: () => void;
+  /** パスワード変更で新しいセッションが発行されたとき */
+  onSessionChange: (session: AuthSession) => void;
 }
 
 const navigation = [
@@ -36,7 +43,12 @@ const navigation = [
 
 type RoomStatusTab = 'active' | 'archived' | 'deleted';
 
-export default function Panel({ token, adminUser, onLogout }: PanelProps) {
+export default function Panel({ token, adminUser, onLogout, onSessionChange }: PanelProps) {
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [operatorsOpen, setOperatorsOpen] = useState(false);
+  const isGuest = token === GUEST_TOKEN;
+  const isOwner = !isGuest && adminUser.role === 'owner';
   const [events, setEvents] = useState<EventItem[]>([]);
   const [eventId, setEventId] = useState('');
   const [tab, setTab] = useState<AdminTab>('questions');
@@ -452,12 +464,69 @@ export default function Panel({ token, adminUser, onLogout }: PanelProps) {
       )}
 
       {/* Account Sheet */}
-      <AppSheet open={account} onOpenChange={setAccount} title="アカウント" description={`${adminUser.displayName} でログイン中`}>
-        <ActionButton tone="secondary" onClick={handleLogoutClick}>
-          <LogOut size={18} />
-          ログアウト
-        </ActionButton>
+      <AppSheet
+        open={account}
+        onOpenChange={setAccount}
+        title="アカウント"
+        description={`${adminUser.displayName}${adminUser.loginId ? `（${adminUser.loginId}）` : ''} でログイン中`}
+      >
+        <div className="account-actions">
+          {passwordChanged && (
+            <p className="notice" role="status">パスワードを変更しました。他の端末ではログアウトされています。</p>
+          )}
+          {!isGuest && (
+            <ActionButton tone="secondary" onClick={() => { setAccount(false); setPasswordChanged(false); setPasswordOpen(true); }}>
+              <KeyRound size={18} />
+              パスワードを変更
+            </ActionButton>
+          )}
+          {isOwner && (
+            <ActionButton tone="secondary" onClick={() => { setAccount(false); setOperatorsOpen(true); }}>
+              <UsersRound size={18} />
+              担当者を管理
+            </ActionButton>
+          )}
+          <ActionButton tone="secondary" onClick={handleLogoutClick}>
+            <LogOut size={18} />
+            ログアウト
+          </ActionButton>
+        </div>
       </AppSheet>
+
+      {/* Password Change Sheet */}
+      {!isGuest && (
+        <AppSheet
+          open={passwordOpen}
+          onOpenChange={setPasswordOpen}
+          title="パスワードを変更"
+          description="変更すると、他の端末ではログアウトされます。"
+        >
+          <PasswordChange
+            token={token}
+            onChanged={(session) => {
+              setPasswordOpen(false);
+              setPasswordChanged(true);
+              setAccount(true);
+              onSessionChange(session);
+            }}
+            onAuthError={onLogout}
+          />
+        </AppSheet>
+      )}
+
+      {/* Operator Management Sheet (owner only) */}
+      {isOwner && (
+        <AppSheet
+          open={operatorsOpen}
+          onOpenChange={setOperatorsOpen}
+          title="担当者を管理"
+          description="担当者の追加、仮パスワードの再発行、利用停止ができます。"
+        >
+          {operatorsOpen && (
+            <OperatorManager token={token} currentLoginId={adminUser.loginId} onAuthError={onLogout} />
+          )}
+        </AppSheet>
+      )}
 
       {/* Share Sheet */}
       <AppSheet

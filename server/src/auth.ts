@@ -1,57 +1,15 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { AdminIdentity } from './types.js';
-
-let client: any = null;
-async function getOAuthClient(): Promise<any> {
-  if (!client) {
-    const { OAuth2Client } = await import('google-auth-library');
-    const clientId = process.env.GOOGLE_CLIENT_ID || '';
-    client = new OAuth2Client(clientId);
-  }
-  return client;
-}
+import { resolveSession } from './sessions.js';
 
 declare global {
   namespace Express {
     interface Request {
       adminUser?: AdminIdentity;
+      /** 現在のセッショントークンの SHA-256（ログアウト・パスワード変更で使用） */
+      sessionHash?: string;
     }
   }
-}
-
-/**
- * 環境変数 ADMIN_IDENTITIES から許可された管理者リストを読み込む
- * JSON配列例: [{"sub":"123456789","displayName":"運営管理者","email":"admin@example.com"}]
- * または単純なカンマ区切り sub リスト
- */
-export function getAllowedAdmins(): AdminIdentity[] {
-  const envVal = process.env.ADMIN_IDENTITIES;
-  if (!envVal) return [];
-
-  try {
-    const parsed = JSON.parse(envVal);
-    if (Array.isArray(parsed)) {
-      return parsed.map((item) => {
-        if (typeof item === 'string') {
-          return { sub: item, displayName: '運営担当者' };
-        }
-        return {
-          sub: String(item.sub),
-          displayName: String(item.displayName || '運営担当者'),
-          email: item.email ? String(item.email) : undefined,
-        };
-      });
-    }
-  } catch {
-    // カンマ区切りの文字列フォールバック
-    return envVal
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((sub) => ({ sub, displayName: '運営担当者' }));
-  }
-
-  return [];
 }
 
 /**
@@ -63,12 +21,6 @@ export function validateProductionEnv(): void {
 
   const missing: string[] = [];
 
-  if (!process.env.GOOGLE_CLIENT_ID?.trim()) {
-    missing.push('GOOGLE_CLIENT_ID');
-  }
-  if (getAllowedAdmins().length === 0) {
-    missing.push('ADMIN_IDENTITIES');
-  }
   if (
     !process.env.RATE_LIMIT_SECRET?.trim() ||
     process.env.RATE_LIMIT_SECRET === 'meigaku-question-box-default-secret-key'
@@ -89,111 +41,69 @@ export function validateProductionEnv(): void {
   }
 }
 
-/**
- * Google ID トークンを検証し、許可された運営者であることを確認する Express ミドルウェア
- */
-export async function requireAdminAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+function unauthenticated(res: Response, message = '認証が必要です。運営IDとパスワードでログインしてください。') {
+  res.status(401).json({ error: { code: 'UNAUTHENTICATED', message } });
+}
+
+async function authenticate(req: Request, res: Response): Promise<boolean> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({
-      error: {
-        code: 'UNAUTHENTICATED',
-        message: '認証が必要です。Googleアカウントでログインしてください。',
-      },
-    });
-    return;
+    unauthenticated(res);
+    return false;
   }
-
-  const idToken = authHeader.slice(7).trim();
-  if (!idToken) {
-    res.status(401).json({
-      error: {
-        code: 'UNAUTHENTICATED',
-        message: '認証トークンが空です。',
-      },
-    });
-    return;
-  }
-
-  // テスト用バイパス
-  if (
-    (process.env.NODE_ENV === 'test' || process.env.ALLOW_TEST_AUTH === 'true') &&
-    idToken.startsWith('test-token-')
-  ) {
-    const sub = idToken.replace('test-token-', '');
-    const allowed = getAllowedAdmins().find((a) => a.sub === sub);
-    if (!allowed) {
-      res.status(403).json({
-        error: {
-          code: 'FORBIDDEN',
-          message: 'このGoogleアカウントには運営権限がありません。',
-        },
-      });
-      return;
-    }
-    req.adminUser = allowed;
-    next();
-    return;
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    unauthenticated(res);
+    return false;
   }
 
   try {
-    const oauthClient = await getOAuthClient();
-    const ticket = await oauthClient.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID || '',
-    });
-
-    const payload = ticket.getPayload();
-    if (!payload || !payload.sub) {
-      res.status(401).json({
-        error: {
-          code: 'UNAUTHENTICATED',
-          message: 'トークンの検証に失敗しました。',
-        },
-      });
-      return;
+    const session = await resolveSession(token);
+    if (!session) {
+      unauthenticated(res, 'ログインの有効期限が切れたか、無効になりました。再度ログインしてください。');
+      return false;
     }
-
-    if (!payload.email_verified) {
-      res.status(403).json({
-        error: {
-          code: 'FORBIDDEN',
-          message: 'メールアドレスが確認されていないアカウントです。',
-        },
-      });
-      return;
-    }
-
-    const sub = payload.sub;
-    const allowed = getAllowedAdmins().find((a) => a.sub === sub);
-
-    if (!allowed) {
-      res.status(403).json({
-        error: {
-          code: 'FORBIDDEN',
-          message: 'このアカウントには運営画面のアクセス権限がありません。',
-        },
-      });
-      return;
-    }
-
-    req.adminUser = {
-      sub: allowed.sub,
-      displayName: allowed.displayName || payload.name || '運営担当者',
-      email: payload.email,
-    };
-
-    next();
+    req.adminUser = session.identity;
+    req.sessionHash = session.tokenHash;
+    return true;
   } catch (error) {
-    res.status(401).json({
-      error: {
-        code: 'UNAUTHENTICATED',
-        message: 'Googleログインの有効期限が切れたか、トークンが無効です。再度ログインしてください。',
-      },
+    console.error('Error resolving operator session:', error);
+    res.status(503).json({
+      error: { code: 'AUTH_UNAVAILABLE', message: 'ログイン状態を確認できませんでした。時間をおいて再度お試しください。' },
     });
+    return false;
   }
+}
+
+/**
+ * 有効なセッションであれば通す（初回パスワード変更前でも可）。
+ * /api/admin/me・パスワード変更・ログアウトでのみ使う。
+ */
+export async function requireSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (await authenticate(req, res)) next();
+}
+
+/**
+ * 運営 API 用。有効なセッションで、かつ初回パスワード変更が済んでいる運営者のみ通す。
+ */
+export async function requireAdminAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!(await authenticate(req, res))) return;
+  if (req.adminUser?.mustChange) {
+    res.status(403).json({
+      error: { code: 'PASSWORD_CHANGE_REQUIRED', message: '初回ログイン時はパスワードの変更が必要です。' },
+    });
+    return;
+  }
+  next();
+}
+
+/** 運営責任者（owner）専用。requireAdminAuth の後に置く */
+export function requireOwner(req: Request, res: Response, next: NextFunction): void {
+  if (req.adminUser?.role !== 'owner') {
+    res.status(403).json({
+      error: { code: 'FORBIDDEN', message: '運営責任者だけが利用できます。' },
+    });
+    return;
+  }
+  next();
 }

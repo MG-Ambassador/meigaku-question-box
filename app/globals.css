@@ -873,6 +873,15 @@ a { color: inherit; }
 .login-card h1 { font-size: 1.5rem; font-weight: 700; }
 .login-card p { font-size: .9375rem; }
 .entry-visitor { font-size: var(--text-support); text-decoration: underline; text-underline-offset: 4px; display: inline-flex; align-items: center; min-height: 48px; }
+.account-actions { display: grid; gap: var(--space-3); }
+.operator-heading { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+.operator-list { display: grid; }
+.operator-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid #e5e5e5; }
+.operator-row > div:first-child { min-width: 0; }
+.operator-meta { display: block; overflow-wrap: anywhere; }
+.operator-actions { display: flex; gap: 8px; }
+.temporary-password { margin: 12px 0 4px; }
+.temporary-password code { display: inline-block; padding: 8px 12px; background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; font-size: 1rem; letter-spacing: .04em; overflow-wrap: anywhere; user-select: all; }
 
 @media (max-width: 767px) {
   .visitor-header { padding: 18px 20px; }

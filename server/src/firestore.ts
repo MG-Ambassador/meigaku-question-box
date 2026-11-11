@@ -7,6 +7,8 @@ export const COLLECTION_RATE_LIMITS = 'rateLimits';
 export const COLLECTION_AUDIT = 'audit';
 export const COLLECTION_ADMIN_REQUESTS = 'adminRequests';
 export const COLLECTION_USER_FAVORITES = 'userFavorites';
+export const COLLECTION_OPERATORS = 'operators';
+export const COLLECTION_OPERATOR_SESSIONS = 'operatorSessions';
 
 let firestoreInstance: Firestore | null = null;
 
