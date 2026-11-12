@@ -9,7 +9,7 @@ import {
   RefreshCw,
   RotateCcw,
   SlidersHorizontal,
-  Star,
+  Bookmark,
   X,
 } from 'lucide-react';
 import {
@@ -468,9 +468,9 @@ export function EventWorkspace({
               aria-label={q.isFavorite ? '自分のお気に入りから解除' : '自分のお気に入りに追加'}
               onClick={() => void handleToggleFavorite(q)}
             >
-              <Star
+              <Bookmark
                 size={20}
-                strokeWidth={q.isFavorite ? 0 : 2}
+                strokeWidth={1.75}
                 fill={q.isFavorite ? 'currentColor' : 'none'}
                 aria-hidden="true"
               />

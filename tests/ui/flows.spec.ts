@@ -103,27 +103,30 @@ async function reviewQuestion(page: Page) {
 }
 async function foldAndSend(page: Page) {
   await reviewQuestion(page);
-  await page.getByRole('button', { name: '質問を送る', exact: true }).click();
+  await page.getByRole('button', { name: '投函する', exact: true }).click();
 }
 
-test('direct input, tactile surface, successful submission and clean sharing', async ({ page }) => {
+test('direct input, tactile surface, successful submission and return to the room door', async ({ page }) => {
   const state = await fixture(page);
   await page.goto('?event=campus&from=instagram');
   await page.getByText('学び・授業', { exact: true }).click();
   const body = page.getByLabel('聞いてみたいこと'); await startWriting(page); await body.fill('自分に合うサークルの探し方は？');
 
   await reviewQuestion(page);
-  const send = page.getByRole('button', { name: '質問を送る', exact: true });
+  const send = page.getByRole('button', { name: '投函する', exact: true });
   await send.scrollIntoViewIfNeeded();
   const box = (await send.boundingBox())!; await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
   await expect(send).toHaveAttribute('data-pressed', 'true'); await expect(send.locator('.action-surface')).not.toHaveCSS('transform', 'none');
   await page.mouse.up();
   await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeFocused();
   expect(state.posted).toHaveLength(1); expect(state.posted[0].category).toBe('学び・授業');
-  await page.getByRole('button', { name: 'この質問箱を共有' }).click();
-  const shared = await page.evaluate(() => JSON.parse(sessionStorage.getItem('test-shared')!));
-  expect(shared.url).toContain('/test-box/?room=campus'); expect(shared.url).not.toContain('instagram'); expect(JSON.stringify(shared)).not.toContain('サークル');
-  await page.getByRole('button', { name: 'もう1件質問する' }).click(); await expect(body).toHaveValue('');
+  // 完了画面には共有の操作を置かない。封筒には便箋が入り、受付印が押される。
+  await expect(page.getByRole('button', { name: 'この質問箱を共有' })).toHaveCount(0);
+  await expect(page.locator('.sealed-letter').getByRole('img', { name: '受付' })).toBeVisible();
+  // 下のボタンは ① ルームの扉（アーチの窓）へ戻る。
+  await page.getByRole('button', { name: 'HOMEに戻る' }).click(); await expect(body).toHaveValue('');
+  await expect(page.locator('.arch-window')).toBeInViewport();
+  await expect(page.getByRole('heading', { name: '何についての質問ですか' })).toBeFocused();
 });
 
 test('unknown submission survives reload and reuses the exact request', async ({ page }) => {
@@ -195,8 +198,8 @@ test('QR and sharing fallback, mobile widths and reduced motion', async ({ page 
   for (const width of [320, 390, 430, 1280]) { await page.setViewportSize({ width, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); }
   await page.setViewportSize({ width: 390, height: 844 });
   await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('テスト質問'); await foldAndSend(page);
-  await page.evaluate(() => { Object.defineProperty(navigator, 'share', { configurable: true, value: undefined }); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('blocked'); } } }); });
-  await page.getByRole('button', { name: 'この質問箱を共有' }).click(); await expect(page.getByLabel('募集ページのURL')).toHaveValue(/\/test-box\/\?room=campus$/);
+  await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/mobile-complete.png', fullPage: true });
 });
 
@@ -205,8 +208,8 @@ test('auth expiry returns to login and offline state prevents sending', async ({
   await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible({ timeout: 10000 });
   await page.goto('?event=campus'); await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('オフライン時の質問');
   await reviewQuestion(page);
-  await context.setOffline(true); await expect(page.getByRole('button', { name: '質問を送る', exact: true })).toBeDisabled();
-  await context.setOffline(false); await expect(page.getByRole('button', { name: '質問を送る', exact: true })).toBeEnabled();
+  await context.setOffline(true); await expect(page.getByRole('button', { name: '投函する', exact: true })).toBeDisabled();
+  await context.setOffline(false); await expect(page.getByRole('button', { name: '投函する', exact: true })).toBeEnabled();
   await expect(page.getByLabel('聞いてみたいこと')).toHaveValue('オフライン時の質問');
 });
 
@@ -216,7 +219,7 @@ test('cancelled press does not submit; keyboard and sheets retain focus', async 
   await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('キーボードからの質問');
   await page.screenshot({ path: 'test-results/mobile-input.png', animations: 'disabled', caret: 'hide' });
   await reviewQuestion(page);
-  const send = page.getByRole('button', { name: '質問を送る', exact: true });
+  const send = page.getByRole('button', { name: '投函する', exact: true });
   await send.scrollIntoViewIfNeeded();
   const box = (await send.boundingBox())!;
   await page.mouse.move(box.x + 40, box.y + 20); await page.mouse.down();
@@ -254,14 +257,13 @@ test('direct submission disables input during send, preserves input on failure, 
   });
 
   await reviewQuestion(page);
-  const send = page.getByRole('button', { name: '質問を送る', exact: true });
+  const send = page.getByRole('button', { name: '投函する', exact: true });
   await send.click();
 
   // Verify inputs disabled and status showing while submitting
   await expect(body).toBeDisabled();
   await expect(send).toBeDisabled();
   await expect(page.getByRole('status')).toContainText('質問を送っています');
-  await expect(send.locator('.airplane-deco')).toHaveClass(/is-flying/);
 
   // Complete the failed request
   resolvePost!();
@@ -273,14 +275,14 @@ test('direct submission disables input during send, preserves input on failure, 
   await expect(send).toBeEnabled();
 });
 
-test('reduced motion keeps airplane animation disabled and completion remains accessible', async ({ page }) => {
+test('reduced motion keeps the seal still and completion remains accessible', async ({ page }) => {
   const state = await fixture(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('?room=campus');
   await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('動きを減らした状態での送信');
 
   await reviewQuestion(page);
-  const send = page.getByRole('button', { name: '質問を送る', exact: true });
+  const send = page.getByRole('button', { name: '投函する', exact: true });
   await send.click();
   await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeFocused();
   expect(state.posted).toHaveLength(1);

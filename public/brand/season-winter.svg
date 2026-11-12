@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-label="冬の線画 陽だまり">
+<title>冬の線画 陽だまり</title>
+<g fill="none" stroke="#232121" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M10 72 C 50 80, 96 76, 150 54"></path>
+<path d="M56 78 C 60 62, 58 50, 52 40"></path><path d="M96 73 C 104 60, 106 48, 102 36"></path><path d="M126 63 C 134 70, 138 82, 140 94"></path><path d="M34 76 C 30 88, 30 96, 34 104"></path>
+<circle cx="52" cy="38" r="2.6"></circle><circle cx="102" cy="34" r="2.6"></circle><circle cx="140" cy="96" r="2.6"></circle><circle cx="34" cy="106" r="2.6"></circle><circle cx="150" cy="52" r="2.6"></circle><circle cx="76" cy="77" r="2.6"></circle>
+<path d="M22 178 L102 178 L140 148 L60 148 Z"></path>
+<path d="M62 178 L100 148"></path><path d="M41 163 L121 163"></path>
+<path d="M10 192 H150"></path>
+</g>
+</svg>

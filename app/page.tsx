@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, HelpCircle, LockKeyhole, MessageCircle } from 'lucide-react';
 import { ApiError, getPublicEvent, type EventItem } from '@/lib/api-client';
 import { resolvePublicPath } from '@/lib/public-url';
+import { SEASON_LABEL, seasonFor, type Season } from '@/lib/season';
 import { useForegroundPoll } from '@/hooks/use-foreground-poll';
 import { ActionButton } from '@/components/question-box/action-button';
 import { AppSheet } from '@/components/question-box/app-sheet';
@@ -20,6 +21,13 @@ export default function Home() {
   const [noRoom, setNoRoom] = useState(false);
   const [busy, setBusy] = useState(false);
   const [help, setHelp] = useState(false);
+  const [stage, setStage] = useState(1);
+  const [season, setSeason] = useState<Season | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The season depends on the visitor's clock, read after hydration.
+    setSeason(seasonFor());
+  }, []);
 
   useEffect(() => {
     function readLocation() {
@@ -106,9 +114,8 @@ export default function Home() {
       </a>
       <header className="visitor-header">
         <a href={resolvePublicPath('/')} className="wordmark" aria-label="明学の質問箱 ホーム">
-          <span className="brand-symbol" aria-hidden="true">
-            m<span>g</span>.
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- Static export serves the official SVG as-is. */}
+          <img className="brand-mark" src={resolvePublicPath('/brand/mg-symbol.svg')} alt="" width={30} height={24} />
           <span>
             明学の質問箱<small>MEIJI GAKUIN UNIVERSITY</small>
           </span>
@@ -119,22 +126,32 @@ export default function Home() {
       </header>
 
       <main id="main-content" className="visitor-main">
-        <div className="visitor-caption">
-          <span className="caption-line" />
-        </div>
-
         {event && (
-          <section className="event-context" aria-label="質問するルーム">
-            <div>
-              <p className="eyebrow">参加するルーム</p>
-              <h2>{event.title}</h2>
-              {event.date && <p className="muted">{event.date}</p>}
-            </div>
-            <div className="event-context-actions">
+          <section className={`event-context ${stage === 1 ? 'is-cover' : 'is-compact'}`} aria-label="質問するルーム">
+            {stage === 1 && (
+              <div className="arch-window" aria-hidden={!season}>
+                <span className="arch-window-light" />
+                {season && (
+                  // eslint-disable-next-line @next/next/no-img-element -- Static export serves the line drawing as-is.
+                  <img
+                    className="arch-window-art"
+                    src={resolvePublicPath(`/brand/season-${season}.svg`)}
+                    alt={SEASON_LABEL[season]}
+                  />
+                )}
+              </div>
+            )}
+            <div className="event-context-row">
+              <p className="eyebrow">参加するルーム · QUESTION BOX</p>
               <span className={`event-status ${event.open ? 'is-open' : ''}`}>
                 {event.open ? '受付中' : '受付終了'}
               </span>
             </div>
+            <h2>{event.title}</h2>
+            {event.date && <p className="event-date">{event.date}</p>}
+            {stage === 1 && (
+              <p className="event-lede">在学生が、届いた質問を読んでいます。小さな疑問も、どうぞ気軽に。</p>
+            )}
           </section>
         )}
 
@@ -198,6 +215,7 @@ export default function Home() {
             key={event.id}
             event={event}
             onBusyChange={setBusy}
+            onStageChange={setStage}
             onClosed={() => {
               setEvent((current) => (current ? { ...current, open: 0 } : current));
               poll.refresh();
@@ -208,7 +226,7 @@ export default function Home() {
 
       <footer className="visitor-footer">
         <span>ひとつの問いが、誰かのために。</span>
-        <span>Do for Others</span>
+        <span lang="en">Do for Others</span>
       </footer>
 
       <AppSheet
@@ -220,7 +238,7 @@ export default function Home() {
         <div className="help-copy">
           <h3>質問の送り方</h3>
           <p>
-            参加するルームを確認し、テーマを選び、聞いてみたいことを書いて、内容を確認します。「質問を送る」を押すと質問が届きます。
+            参加するルームを確認し、テーマを選び、聞いてみたいことを書いて、内容を確認します。「投函する」を押すと質問が届きます。
           </p>
           <h3>質問を見られる人</h3>
           <p>
@@ -228,7 +246,7 @@ export default function Home() {
           </p>
           <h3>個人情報について</h3>
           <p>
-            氏名・メールアドレスは入力不要です。あなたや誰かの氏名・連絡先を本文に書かないでください。連投対策に一時的な通信識別情報を使用し、ホスティング事業者のアクセスログに通信情報が残る場合があります。
+            氏名・メールアドレスは入力不要です。ご自身やほかの方の氏名・連絡先は本文に書かないでください。連投対策に一時的な通信識別情報を使用し、ホスティング事業者のアクセスログに通信情報が残る場合があります。
           </p>
           <h3>下書きについて</h3>
           <p>

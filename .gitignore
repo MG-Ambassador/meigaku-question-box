@@ -57,3 +57,7 @@ next-env.d.ts
 
 /test-results/
 /playwright-report/
+
+# node_modules kept outside iCloud sync (symlinked as node_modules)
+/node_modules.nosync
+/server/node_modules.nosync

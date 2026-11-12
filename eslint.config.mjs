@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "outputs/**",
+    // node_modules moved out of iCloud sync (symlinked as node_modules).
+    "node_modules.nosync/**",
     // Separate API package: checked by its TypeScript build and server tests.
     "server/**",
     // Archived framework implementation; not in the Next.js export.
