@@ -12,6 +12,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="admin-shell">
       <header className="operator-header">
         <a href={resolvePublicPath('/admin/')} className="operator-brand">
+          {/* eslint-disable-next-line @next/next/no-img-element -- Static export serves the official SVG as-is. */}
+          <img src={resolvePublicPath('/brand/mg-symbol.svg')} alt="" width={30} height={24} />
           明学の質問箱 <span>運営管理</span>
         </a>
         <div>
@@ -19,7 +21,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </header>
       {children}
-      <div className="operator-footer">MEIGAKU QUESTION BOX · 運営専用ページ</div>
+      <div className="operator-footer">MEIJI GAKUIN UNIVERSITY · 質問箱 運営専用ページ</div>
     </div>
   );
 }

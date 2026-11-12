@@ -107,6 +107,8 @@ export default function AdminPage() {
   // 未認証・確認中・初回パスワード変更・エラー時の画面
   return (
     <main className="operator-entry">
+      {/* eslint-disable-next-line @next/next/no-img-element -- Static export serves the official SVG as-is. */}
+      <img className="entry-lockup" src={resolvePublicPath('/brand/mg-lockup-3line.svg')} alt="明治学院大学 Meiji Gakuin University" />
       <div className="login-card surface">
         <span className="eyebrow block text-xs font-semibold tracking-wider text-neutral-500 mb-2">
           MEIGAKU QUESTION BOX · ADMIN

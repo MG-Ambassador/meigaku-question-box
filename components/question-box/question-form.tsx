@@ -1,14 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import {
-  ArrowRight,
-  ArrowLeft,
-  LockKeyhole,
-  Send,
-} from 'lucide-react';
+import { ArrowRight, ArrowLeft, House, LockKeyhole } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ApiError, submitQuestion, type EventItem } from '@/lib/api-client';
+import { resolvePublicPath } from '@/lib/public-url';
 import {
   CATEGORIES,
   emptyDraft,
@@ -19,16 +15,27 @@ import {
   type Draft,
 } from '@/lib/question-draft';
 import { ActionButton } from './action-button';
-import { ShareControls } from './share-controls';
 import { ConfirmDialog } from './confirm-dialog';
+import { SealedLetter } from './sealed-letter';
+
+const THEME_HINTS: Record<Category, string> = {
+  '大学生活': 'サークル・キャンパス・一日の過ごし方',
+  '学び・授業': '学科・ゼミ・時間割',
+  '入試・進路': '受験・就職・資格',
+  '留学・国際交流': '留学制度・語学・海外との交流',
+  'その他': '迷ったときはこちらへ',
+};
 
 export function QuestionForm({
   event,
   onBusyChange,
+  onStageChange,
   onClosed,
 }: {
   event: EventItem;
   onBusyChange: (busy: boolean) => void;
+  /** 1–3 = 入力のステップ、0 = 受付完了。扉の窓を出し分けるために使う。 */
+  onStageChange?: (stage: number) => void;
   onClosed: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -39,7 +46,7 @@ export function QuestionForm({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [slow, setSlow] = useState(false);
-  const [isFlying, setIsFlying] = useState(false);
+  const [sent, setSent] = useState<{ category: Category; body: string; at: number } | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
   const [storageUnavailable, setStorageUnavailable] = useState(false);
@@ -107,6 +114,10 @@ export function QuestionForm({
   }, [draft.retryAt]);
 
   useEffect(() => {
+    onStageChange?.(complete ? 0 : step);
+  }, [complete, step, onStageChange]);
+
+  useEffect(() => {
     if (complete) {
       completeHeading.current?.focus();
     }
@@ -152,12 +163,6 @@ export function QuestionForm({
     onBusyChange(true);
     setError('');
 
-    // Trigger visual flight takeoff (~240ms) without delaying communication
-    setIsFlying(!current.current.pending);
-    const takeoffTimer = setTimeout(() => {
-      if (mounted.current) setIsFlying(false);
-    }, 260);
-
     try {
       const source =
         new URLSearchParams(window.location.search).get('from') === 'instagram'
@@ -175,6 +180,7 @@ export function QuestionForm({
       if (!result.ok || !result.id) throw new Error('受付が完了したか確認できませんでした。');
 
       if (mounted.current) {
+        setSent({ category: pending.category, body: pending.body, at: Date.now() });
         persist(emptyDraft());
         setComplete(true);
       } else {
@@ -189,7 +195,6 @@ export function QuestionForm({
       }
     } catch (e) {
       if (!mounted.current) return;
-      setIsFlying(false);
 
       if (e instanceof ApiError && e.statusCode >= 400 && e.statusCode < 500 && e.statusCode !== 408) {
         const next = { ...current.current, pending: undefined };
@@ -209,7 +214,6 @@ export function QuestionForm({
         );
       }
     } finally {
-      clearTimeout(takeoffTimer);
       sending.current = false;
       if (mounted.current) {
         setBusy(false);
@@ -220,39 +224,42 @@ export function QuestionForm({
   }
 
   if (complete) {
+    const time = sent
+      ? new Date(sent.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
+      : '';
     return (
       <section className="completion in-page-completion" aria-labelledby="complete-title">
-        <svg className="completion-art" viewBox="0 0 240 140" fill="none" aria-hidden="true">
-          <path d="M28 118h184M64 118V76h112v42M64 76l56-38 56 38M89 118V88h62v30" stroke="currentColor" strokeWidth="2" />
-          <path d="m145 25 65-13-24 46-9-21-32-12Z" fill="var(--brand)" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="m177 37 33-25M26 72c-8-32 51-56 80-42" stroke="currentColor" strokeWidth="2" strokeDasharray="4 6" />
-          <path d="m116 97 5 5 10-12" stroke="currentColor" strokeWidth="2" />
-        </svg>
+        <SealedLetter body={sent?.body} />
+        <p className="eyebrow eyebrow-ink completion-eyebrow">受付完了 · RECEIVED</p>
         <h1 id="complete-title" tabIndex={-1} ref={completeHeading}>
-          質問を受け付けました
+          <span className="sk-mark">質問を受け付けました</span>
         </h1>
-        <p>
-          あなたの問いを、運営に届けました。
-          <br />
-          イベントで紹介・回答する場合があります。
-        </p>
-        <p className="completion-note">この画面は閉じて大丈夫です。<br />すべての質問への回答や、個別の通知はありません。</p>
+        {sent && <p className="received-meta">{sent.category} · {time}</p>}
+        <p className="completion-lede">運営に届けました。イベントで紹介・回答する場合があります。</p>
+        <p className="completion-note">この画面は閉じて大丈夫です。すべての質問への回答や、個別の通知はありません。</p>
+        <div className="completion-mark">
+          {/* eslint-disable-next-line @next/next/no-img-element -- Static export serves the official SVG as-is. */}
+          <img src={resolvePublicPath('/brand/mg-ring.svg')} alt="明治学院大学" width={56} height={56} />
+        </div>
         <div className="completion-actions">
           <ActionButton
             type="button"
             className="full-width"
-            tone="primary"
+            tone="secondary"
             onClick={() => {
               setComplete(false);
+              setSent(null);
               setError('');
-              moveTo(1);
+              setStep(1);
+              // ① ルームの扉（アーチの窓）から見せる。見出しへのフォーカスで扉が隠れないよう、先頭に戻してからフォーカスする。
+              requestAnimationFrame(() => {
+                window.scrollTo({ top: 0 });
+                stepHeading.current?.focus({ preventScroll: true });
+              });
             }}
           >
-            もう1件質問する <ArrowRight size={19} aria-hidden="true" />
+            <House size={18} aria-hidden="true" />HOMEに戻る
           </ActionButton>
-        </div>
-        <div className="completion-share">
-          <ShareControls eventId={event.id} title={event.title} />
         </div>
       </section>
     );
@@ -304,11 +311,11 @@ export function QuestionForm({
         </ol>
         <div className="question-heading">
           <h1 ref={stepHeading} tabIndex={-1}>
-            {step === 1 ? 'どんなことを聞きたい？' : step === 2 ? '聞いてみたいこと' : 'この質問を届けますか？'}
+            {step === 1 ? '何についての質問ですか' : step === 2 ? '聞いてみたいこと' : 'この内容で投函します'}
           </h1>
         </div>
         <p className="step-intro">
-          {step === 1 ? '近いテーマをひとつ。迷ったら「その他」で大丈夫。' : step === 2 ? '小さな疑問も、あなたの言葉で。' : '送る前に、内容をもう一度。'}
+          {step === 1 ? '近いテーマをひとつ選んでください。迷ったら「その他」で大丈夫です。' : step === 2 ? '小さな疑問も、ご自身の言葉で。' : '送ったあとは取り消せません。内容をもう一度ご確認ください。'}
         </p>
         <div hidden={step !== 1}>
         <fieldset
@@ -331,8 +338,12 @@ export function QuestionForm({
                   value={category}
                   id={`theme-${i}`}
                   className="theme-radio"
+                  aria-describedby={`theme-hint-${i}`}
                 />
-                <span>{category}</span>
+                <span className="theme-option-text">
+                  <span>{category}</span>
+                  <small id={`theme-hint-${i}`} aria-hidden="true">{THEME_HINTS[category]}</small>
+                </span>
               </label>
             ))}
           </RadioGroup>
@@ -340,7 +351,7 @@ export function QuestionForm({
 
         </div>
         <div hidden={step !== 2 && !draft.pending}>
-        {draft.pending && <p className="review-theme">{draft.category}</p>}
+        <p className="review-theme letter-theme">{draft.category}</p>
         <label className="sr-only" htmlFor="question-body">聞いてみたいこと</label>
         <textarea
           id="question-body"
@@ -373,9 +384,14 @@ export function QuestionForm({
 
         </div>
         {step === 3 && !draft.pending && (
-          <div className="question-review">
-            <span className="review-theme">{draft.category}</span>
-            <p>{draft.body}</p>
+          <div className="question-review envelope">
+            <span className="stamp-box" aria-hidden="true">受付印</span>
+            <dl>
+              <dt>テーマ</dt>
+              <dd>{draft.category}</dd>
+              <dt>質問</dt>
+              <dd className="review-body">{draft.body}</dd>
+            </dl>
             <ActionButton type="button" tone="quiet" disabled={busy} onClick={() => moveTo(2)}>質問を直す</ActionButton>
           </div>
         )}
@@ -439,15 +455,7 @@ export function QuestionForm({
             ) : draft.pending && (!busy || isCheckingPending) ? (
               busy ? '確認中…' : '送信結果を確認'
             ) : (
-              <>
-                質問を送る
-                <span
-                  className={`airplane-deco ${isFlying ? 'is-flying' : ''}`}
-                  aria-hidden="true"
-                >
-                  <Send size={18} />
-                </span>
-              </>
+              '投函する'
             )}
           </ActionButton>
 

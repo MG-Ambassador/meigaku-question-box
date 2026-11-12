@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-label="夏の線画 陽光">
+<title>夏の線画 陽光</title>
+<g fill="none" stroke="#232121" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M38 198 V96 A42 42 0 0 1 122 96 V198"></path>
+<path d="M46 198 V98 A34 34 0 0 1 114 98 V198"></path>
+<path d="M80 64 V198"></path><path d="M46 132 H114"></path><path d="M46 168 H114"></path>
+<circle cx="80" cy="92" r="11"></circle><circle cx="80" cy="92" r="4"></circle>
+<g stroke-dasharray="3 6"><path d="M8 34 L56 82"></path><path d="M4 58 L54 108"></path><path d="M14 18 L64 68"></path></g>
+</g>
+</svg>
