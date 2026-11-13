@@ -50,6 +50,13 @@ export function installFakeFirestore() {
 
   setFirestore({
     collection: (name: string) => query(name),
+    batch: () => {
+      const ops: (() => void)[] = [];
+      return {
+        delete: (r: any) => { ops.push(() => void records.delete(r.key)); },
+        commit: async () => { for (const op of ops) op(); },
+      };
+    },
     runTransaction: async (fn: any) => {
       let wrote = false;
       const writes: (() => void)[] = [];

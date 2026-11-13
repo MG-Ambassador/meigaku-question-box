@@ -125,7 +125,8 @@ describe('P1 Cloud Run API Server - Integration Tests', () => {
     const body = (await res.json()) as any;
     assert.equal(body.displayName, 'テスト管理者');
     assert.equal(body.sub, 'test-admin');
-    assert.equal(body.role, 'operator');
+    // 旧ロール「担当者（operator）」はアンバサダーとして返す
+    assert.equal(body.role, 'ambassador');
   });
 
   it('GET /api/admin: event パラメータなしで 400 VALIDATION_ERROR を返すこと', async () => {

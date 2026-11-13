@@ -5,8 +5,8 @@
  * 通常の担当者の追加・再発行・停止は管理画面の「担当者管理」から行う。
  *
  * 使い方（qa_box/ から）:
- *   npm run operator:create -- --login-id <ID> --display-name <表示名> [--role owner|operator]            # 確認のみ
- *   npm run operator:create -- --login-id <ID> --display-name <表示名> [--role owner|operator] --execute  # 作成
+ *   npm run operator:create -- --login-id <ID> --display-name <表示名> [--role developer|owner|faculty|ambassador|staff]            # 確認のみ
+ *   npm run operator:create -- --login-id <ID> --display-name <表示名> [--role developer|owner|faculty|ambassador|staff] --execute  # 作成
  *   npm run operator:create -- --login-id <ID> --reset --execute                                          # 仮パスワード再発行
  *
  * 接続先は server/.env の GOOGLE_CLOUD_PROJECT / FIRESTORE_DATABASE_ID（または FIRESTORE_EMULATOR_HOST）。
@@ -37,7 +37,7 @@ const execute = process.argv.includes('--execute');
 
 if (!loginId) fail('--login-id には半角英数字・ハイフン・アンダーバーの3〜40文字を指定してください。');
 if (!reset && (!displayName || displayName.length > 60)) fail('--display-name に60文字以内の表示名を指定してください。');
-if (!OPERATOR_ROLES.includes(role)) fail('--role には owner または operator を指定してください。');
+if (!OPERATOR_ROLES.includes(role)) fail(`--role には ${OPERATOR_ROLES.join(' / ')} のいずれかを指定してください。`);
 
 const target = process.env.FIRESTORE_EMULATOR_HOST
   ? `エミュレータ ${process.env.FIRESTORE_EMULATOR_HOST}`

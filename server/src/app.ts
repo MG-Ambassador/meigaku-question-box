@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { requireAdminAuth, requireOwner, requireSession } from './auth.js';
+import { requireAdminAuth, requirePermission, requireSession } from './auth.js';
 import {
   loginHandler,
   logoutHandler,
@@ -10,6 +10,7 @@ import {
   listOperatorsHandler,
   createOperatorHandler,
   operatorActionHandler,
+  changeOperatorRoleHandler,
 } from './operators.js';
 import { submitQuestionHandler } from './questions.js';
 import {
@@ -19,6 +20,7 @@ import {
   saveEventHandler,
   patchEventHandler,
   lifecycleEventHandler,
+  emptyTrashHandler,
 } from './events.js';
 import {
   getAdminMeHandler,
@@ -104,15 +106,20 @@ export function createApp() {
 
   // 運営者専用 API（要認証）。/api/admin/me は初回パスワード変更前でも参照できる
   app.get('/api/admin/me', requireSession, getAdminMeHandler);
-  app.get('/api/admin/operators', requireAdminAuth, requireOwner, listOperatorsHandler);
-  app.post('/api/admin/operators', requireAdminAuth, requireOwner, createOperatorHandler);
-  app.post('/api/admin/operators/:id/:action', requireAdminAuth, requireOwner, operatorActionHandler);
+  const manageAccounts = requirePermission('accounts.manage');
+  app.get('/api/admin/operators', requireAdminAuth, manageAccounts, listOperatorsHandler);
+  app.post('/api/admin/operators', requireAdminAuth, manageAccounts, createOperatorHandler);
+  // :action より先に登録する（/role を汎用アクションとして扱わせない）
+  app.post('/api/admin/operators/:id/role', requireAdminAuth, manageAccounts, changeOperatorRoleHandler);
+  app.post('/api/admin/operators/:id/:action', requireAdminAuth, manageAccounts, operatorActionHandler);
   app.get('/api/admin/events', requireAdminAuth, listAdminEventsHandler);
   app.get('/api/admin', requireAdminAuth, getAdminReportHandler);
   app.put('/api/admin/questions/:id/favorite', requireAdminAuth, toggleQuestionFavoriteHandler);
-  app.post('/api/events', requireAdminAuth, saveEventHandler);
-  app.patch('/api/events/:id', requireAdminAuth, patchEventHandler);
-  app.post('/api/events/:id/lifecycle', requireAdminAuth, lifecycleEventHandler);
+  app.post('/api/events', requireAdminAuth, requirePermission('room.manage'), saveEventHandler);
+  // スタッフも受付の開始・終了はできる。タイトル・日付を変えたかどうかは patchEventHandler で見る。
+  app.patch('/api/events/:id', requireAdminAuth, requirePermission('room.toggleOpen'), patchEventHandler);
+  app.post('/api/events/:id/lifecycle', requireAdminAuth, requirePermission('room.manage'), lifecycleEventHandler);
+  app.post('/api/admin/trash/empty', requireAdminAuth, requirePermission('trash.empty'), emptyTrashHandler);
 
   // 404 ハンドラ
   app.use((_req, res) => {

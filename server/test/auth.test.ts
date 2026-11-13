@@ -201,4 +201,117 @@ describe('運営ID・パスワード認証', () => {
     assert.equal((await call('/api/admin/operators/nobody/disable', { token: owner, body: {} })).status, 404);
     assert.equal((await call('/api/admin/operators/member/delete', { token: owner, body: {} })).status, 400);
   });
+  it('ごみ箱を空にすると、ごみ箱のルームと質問・お気に入り・集計だけが消え、責任者以外は実行できない', async () => {
+    const now = Timestamp.now();
+    const ev = { title: 't', date: '', open: false, version: 2, createdAt: now, updatedAt: now, updatedBy: 'x', schemaVersion: 1 };
+    records.set('events/trashed', { ...ev, status: 'deleted' });
+    records.set('events/kept', { ...ev, status: 'archived' });
+    records.set('eventStats/trashed', { total: 1 });
+    records.set('questions/q1', { eventId: 'trashed', body: 'a' });
+    records.set('questions/q2', { eventId: 'kept', body: 'b' });
+    records.set('userFavorites/owner_q1', { eventId: 'trashed', questionId: 'q1' });
+
+    const member = (await login('member', MEMBER_PASSWORD)).body.token;
+    assert.equal((await call('/api/admin/trash/empty', { token: member, body: {} })).status, 403);
+    assert.ok(records.has('events/trashed'));
+
+    const owner = (await login('owner', OWNER_PASSWORD)).body.token;
+    const res = await call('/api/admin/trash/empty', { token: owner, body: {} });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.deletedEvents, 1);
+    assert.equal(res.body.deletedQuestions, 1);
+    for (const key of ['events/trashed', 'eventStats/trashed', 'questions/q1', 'userFavorites/owner_q1']) assert.ok(!records.has(key), key);
+    for (const key of ['events/kept', 'questions/q2']) assert.ok(records.has(key), key);
+    const audit = [...records.entries()].filter(([key]) => key.startsWith('audit/')).map(([, v]) => v.action);
+    assert.deepEqual(audit, ['event_purge']);
+  });
+  it('5つのロールは権限表どおりに操作できる（スタッフは受付の切り替えだけ）', async () => {
+    const now = Timestamp.now();
+    const base = { active: true, mustChange: false, version: 1, createdAt: now, updatedAt: now };
+    for (const role of ['developer', 'faculty', 'ambassador', 'staff']) {
+      records.set(`operators/${role}`, { ...base, loginId: role, displayName: role, role, passwordHash: memberHash });
+    }
+    const ev = { title: 't', date: '', open: false, status: 'active', createdAt: now, updatedAt: now, updatedBy: 'x', schemaVersion: 1 };
+    const token = async (id: string) => (await login(id, MEMBER_PASSWORD)).body.token as string;
+    const staff = await token('staff');
+    const faculty = await token('faculty');
+    const developer = await token('developer');
+
+    // スタッフ：受付の開閉はできるが、タイトル変更・作成・アーカイブ・ごみ箱・アカウント管理はできない
+    records.set('events/r1', { ...ev, version: 1 });
+    const toggle = await call('/api/events/r1', { method: 'PATCH', token: staff, body: { title: 't', date: '', open: true, version: 1 } });
+    assert.equal(toggle.status, 200);
+    assert.equal(toggle.body.open, 1);
+    assert.equal((await call('/api/events/r1', { method: 'PATCH', token: staff, body: { title: '別名', open: true, version: 2 } })).status, 403);
+    assert.equal((await call('/api/events', { token: staff, body: { title: '新規', open: false } })).status, 403);
+    assert.equal((await call('/api/events/r1/lifecycle', { token: staff, body: { action: 'archive', version: 2 } })).status, 403);
+    assert.equal((await call('/api/admin/trash/empty', { token: staff, body: {} })).status, 403);
+    assert.equal((await call('/api/admin/operators', { token: staff })).status, 403);
+
+    // 教員：ルームの編集・アーカイブはできるが、ごみ箱を空にする・アカウント管理はできない
+    assert.equal((await call('/api/events/r1', { method: 'PATCH', token: faculty, body: { title: '別名', version: 2 } })).status, 200);
+    assert.equal((await call('/api/events/r1/lifecycle', { token: faculty, body: { action: 'archive', version: 3 } })).status, 200);
+    assert.equal((await call('/api/admin/trash/empty', { token: faculty, body: {} })).status, 403);
+    assert.equal((await call('/api/admin/operators', { token: faculty })).status, 403);
+
+    // 責任者：教員以下は作れるが、責任者・開発者は作れず、開発者のアカウントも変更できない
+    const owner = (await login('owner', OWNER_PASSWORD)).body.token;
+    assert.equal((await call('/api/admin/operators', { token: owner, body: { loginId: 'new-staff', displayName: 's', role: 'staff' } })).status, 201);
+    assert.equal(records.get('operators/new-staff').role, 'staff');
+    assert.equal((await call('/api/admin/operators', { token: owner, body: { loginId: 'new-owner', displayName: 'o', role: 'owner' } })).status, 403);
+    assert.equal((await call('/api/admin/operators', { token: owner, body: { loginId: 'new-dev', displayName: 'd', role: 'developer' } })).status, 403);
+    assert.equal((await call('/api/admin/operators/developer/disable', { token: owner, body: {} })).status, 403);
+    // 旧「担当者」はアンバサダー扱いなので、責任者が管理できる
+    assert.equal((await call('/api/admin/operators/member/reset', { token: owner, body: {} })).status, 200);
+
+    // 開発者：責任者も作成・変更できる
+    assert.equal((await call('/api/admin/operators', { token: developer, body: { loginId: 'new-owner', displayName: 'o', role: 'owner' } })).status, 201);
+    assert.equal((await call('/api/admin/operators/owner/disable', { token: developer, body: {} })).status, 200);
+  });
+  it('既存アカウントのロールを管理範囲内で変更でき、対象者は再ログインになる', async () => {
+    const now = Timestamp.now();
+    const base = { active: true, mustChange: false, version: 1, createdAt: now, updatedAt: now, passwordHash: memberHash };
+    records.set('operators/developer', { ...base, loginId: 'developer', displayName: 'd', role: 'developer' });
+    records.set('operators/staff', { ...base, loginId: 'staff', displayName: 's', role: 'staff' });
+    const role = (target: string, token: string, body: unknown) => call(`/api/admin/operators/${target}/role`, { token, body });
+
+    const owner = (await login('owner', OWNER_PASSWORD)).body.token;
+    const staff = (await login('staff', MEMBER_PASSWORD)).body.token;
+
+    // 権限のない人・不正な値・自分自身・管理範囲外は拒否
+    assert.equal((await role('member', staff, { role: 'faculty' })).status, 403);
+    assert.equal((await role('staff', owner, { role: 'boss' })).status, 400);
+    assert.equal((await role('owner', owner, { role: 'faculty' })).status, 400);
+    assert.equal((await role('staff', owner, { role: 'owner' })).status, 403);
+    assert.equal((await role('developer', owner, { role: 'staff' })).status, 403);
+    assert.equal((await role('nobody', owner, { role: 'staff' })).status, 404);
+    assert.equal(records.get('operators/staff').role, 'staff');
+
+    // 責任者はスタッフを教員に変更できる。対象のセッションは無効になる
+    const res = await role('staff', owner, { role: 'faculty' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.changed, true);
+    assert.equal(records.get('operators/staff').role, 'faculty');
+    assert.equal(records.get('operators/staff').version, 2);
+    assert.equal((await call('/api/admin/me', { token: staff, method: 'GET' })).status, 401);
+    const relogin = await login('staff', MEMBER_PASSWORD);
+    assert.equal(relogin.body.user.role, 'faculty');
+
+    // 同じロールへの変更は何もしない
+    const same = await role('staff', owner, { role: 'faculty' });
+    assert.equal(same.body.changed, false);
+    assert.equal(records.get('operators/staff').version, 2);
+
+    // 旧「担当者」もアンバサダー扱いで変更でき、新しい値で保存される
+    assert.equal((await role('member', owner, { role: 'staff' })).status, 200);
+    assert.equal(records.get('operators/member').role, 'staff');
+
+    // 開発者は責任者を教員に下げられる
+    const developer = (await login('developer', MEMBER_PASSWORD)).body.token;
+    assert.equal((await role('owner', developer, { role: 'faculty' })).status, 200);
+    assert.equal(records.get('operators/owner').role, 'faculty');
+
+    const audit = [...records.entries()].filter(([key]) => key.startsWith('audit/')).map(([, v]) => v.action).sort();
+    assert.deepEqual(audit, ['operator_role_ambassador_to_staff', 'operator_role_owner_to_faculty', 'operator_role_staff_to_faculty']);
+  });
 });

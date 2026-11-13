@@ -9,12 +9,12 @@
 import { ApiError, type EventItem, type QuestionRow, type ReportData } from './api-client.ts';
 
 export const GUEST_TOKEN = '__guest_admin__';
-// ゲストは一般担当者扱い（担当者管理・パスワード変更は表示しない）
+// ゲストはアンバサダー扱い（アカウント管理・パスワード変更は表示しない）
 export const GUEST_USER = {
   displayName: 'ゲスト管理者',
   sub: 'guest-admin',
   loginId: 'guest-admin',
-  role: 'operator',
+  role: 'ambassador',
   mustChange: false,
 } as const;
 
@@ -155,6 +155,14 @@ export async function guestFetch<T>(path: string, init: { method?: string; body?
     if (!q) throw new ApiError(404, { code: 'QUESTION_NOT_FOUND', message: '質問が見つかりません。' });
     q.isFavorite = !!body.favorite;
     return { ok: true, questionId: q.id, favorite: q.isFavorite } as T;
+  }
+
+  if (method === 'POST' && p === '/api/admin/trash/empty') {
+    const ids = events.filter((e) => e.status === 'deleted').map((e) => e.id);
+    const before = questions.length;
+    events.splice(0, events.length, ...events.filter((e) => e.status !== 'deleted'));
+    questions.splice(0, questions.length, ...questions.filter((q) => !ids.includes(q.eventId)));
+    return { ok: true, deletedEvents: ids.length, deletedQuestions: before - questions.length, ids } as T;
   }
 
   m = p.match(/^\/api\/events\/([^/]+)\/lifecycle$/);

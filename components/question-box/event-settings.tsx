@@ -23,6 +23,7 @@ export function EventSettings({
   onBusyChange,
   saveRef,
   discardRef,
+  canManage = true,
 }: {
   event?: EventItem;
   token: string;
@@ -32,6 +33,8 @@ export function EventSettings({
   onBusyChange?: (busy: boolean) => void;
   saveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   discardRef?: React.MutableRefObject<(() => void) | null>;
+  /** false のとき（スタッフ）は、受付の開始・終了だけ変更でき、ルーム名・日時・整理の操作は出さない */
+  canManage?: boolean;
 }) {
   const [baseline, setBaseline] = useState(event);
   const [title, setTitle] = useState(event?.title || '');
@@ -263,6 +266,10 @@ export function EventSettings({
           <p className="muted">来場者に表示する情報を設定します。</p>
         </div>
 
+        {!canManage && !isDeleted && (
+          <p className="notice" role="note">スタッフは受付の開始・終了だけ変更できます。ルーム名や日時の変更は、アンバサダー以上に依頼してください。</p>
+        )}
+
         {isDeleted && (
           <div className="notice notice-error" role="alert">
             <p>このルームはごみ箱にあります。編集や質問募集を行うには、アーカイブとして復元してください。</p>
@@ -280,7 +287,7 @@ export function EventSettings({
             maxLength={100}
             value={title}
             onChange={(e) => { setTitle(e.target.value); if (!title.trim()) setError(''); }}
-            disabled={busy || isDeleted}
+            disabled={busy || isDeleted || !canManage}
             placeholder="オープンキャンパス"
           />
         </label>
@@ -291,7 +298,7 @@ export function EventSettings({
             maxLength={100}
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            disabled={busy || isDeleted}
+            disabled={busy || isDeleted || !canManage}
             placeholder="10月10日 13:00〜 白金キャンパス"
           />
         </label>
@@ -390,7 +397,7 @@ export function EventSettings({
         </section>
       )}
 
-      {baseline && (
+      {baseline && canManage && (
         <section className="surface room-lifecycle-card">
           <div className="section-heading">
             <h2>ルームの整理</h2>
