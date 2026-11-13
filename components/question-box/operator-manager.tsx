@@ -4,52 +4,61 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, KeyRound, UserPlus } from 'lucide-react';
 import {
   ApiError,
+  changeOperatorRole,
   createOperator,
   listOperators,
   operatorAction,
   type OperatorItem,
+  type OperatorRole,
 } from '@/lib/api-client';
+import { manageableRoles, normalizeRole, ROLE_LABELS } from '@/lib/roles';
 import { ActionButton } from './action-button';
 import { ConfirmDialog } from './confirm-dialog';
 
 type PendingAction = { operator: OperatorItem; action: 'reset' | 'disable' | 'enable' };
+type PendingRole = { operator: OperatorItem; role: OperatorRole };
 type Issued = { loginId: string; temporaryPassword: string; reason: 'create' | 'reset' };
 
 const ACTION_TEXT = {
   reset: {
     title: '仮パスワードを再発行しますか？',
-    body: 'この担当者の現在のパスワードとログイン中の端末はすべて無効になります。新しい仮パスワードは一度だけ表示されます。',
+    body: 'このアカウントの現在のパスワードとログイン中の端末はすべて無効になります。新しい仮パスワードは一度だけ表示されます。',
     action: '再発行する',
   },
   disable: {
     title: '利用を停止しますか？',
-    body: 'この担当者はすぐにログアウトされ、再開するまでログインできなくなります。',
+    body: 'このアカウントはすぐにログアウトされ、再開するまでログインできなくなります。',
     action: '利用を停止する',
   },
   enable: {
     title: '利用を再開しますか？',
-    body: 'この担当者は現在のパスワードで再びログインできるようになります。',
+    body: 'このアカウントは現在のパスワードで再びログインできるようになります。',
     action: '利用を再開する',
   },
 } as const;
 
-/** 運営責任者向け：担当者の一覧・追加・仮パスワード再発行・利用停止/再開 */
+/** 開発者・責任者向け：アカウントの一覧・追加・ロール変更・仮パスワード再発行・利用停止/再開 */
 export function OperatorManager({
   token,
   currentLoginId,
+  currentRole,
   onAuthError,
 }: {
   token: string;
   currentLoginId?: string;
+  currentRole?: OperatorRole;
   onAuthError: () => void;
 }) {
+  const allowedRoles = manageableRoles(currentRole);
   const [operators, setOperators] = useState<OperatorItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [loginId, setLoginId] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [role, setRole] = useState<OperatorRole>('ambassador');
   const [creating, setCreating] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [pendingRole, setPendingRole] = useState<PendingRole | null>(null);
   const [acting, setActing] = useState(false);
   const [issued, setIssued] = useState<Issued | null>(null);
   const [copied, setCopied] = useState(false);
@@ -72,7 +81,7 @@ export function OperatorManager({
         const items = await listOperators(token, signal);
         if (!signal?.aborted) setOperators(items);
       } catch (err) {
-        if (!signal?.aborted) handleError(err, '担当者を読み込めませんでした。');
+        if (!signal?.aborted) handleError(err, 'アカウントを読み込めませんでした。');
       } finally {
         if (!signal?.aborted) setLoading(false);
       }
@@ -100,14 +109,14 @@ export function OperatorManager({
     setCreating(true);
     setError('');
     try {
-      const result = await createOperator(token, { loginId: loginId.trim(), displayName: displayName.trim() });
+      const result = await createOperator(token, { loginId: loginId.trim(), displayName: displayName.trim(), role });
       setIssued({ loginId: result.loginId, temporaryPassword: result.temporaryPassword, reason: 'create' });
       setCopied(false);
       setLoginId('');
       setDisplayName('');
       await load();
     } catch (err) {
-      handleError(err, '担当者を追加できませんでした。');
+      handleError(err, 'アカウントを追加できませんでした。');
     } finally {
       setCreating(false);
     }
@@ -125,10 +134,25 @@ export function OperatorManager({
       }
       await load();
     } catch (err) {
-      handleError(err, '担当者を更新できませんでした。');
+      handleError(err, 'アカウントを更新できませんでした。');
     } finally {
       setActing(false);
       setPending(null);
+    }
+  }
+
+  async function runRoleChange() {
+    if (!pendingRole || acting) return;
+    setActing(true);
+    setError('');
+    try {
+      await changeOperatorRole(token, pendingRole.operator.loginId, pendingRole.role);
+      await load();
+    } catch (err) {
+      handleError(err, 'ロールを変更できませんでした。');
+    } finally {
+      setActing(false);
+      setPendingRole(null);
     }
   }
 
@@ -153,7 +177,7 @@ export function OperatorManager({
       {issued && (
         <div className="notice" role="status">
           <p className="font-semibold">
-            {issued.reason === 'create' ? '担当者を追加しました。' : '仮パスワードを再発行しました。'}
+            {issued.reason === 'create' ? 'アカウントを追加しました。' : '仮パスワードを再発行しました。'}
           </p>
           <p className="mt-1">
             運営ID <strong>{issued.loginId}</strong> の仮パスワードです。この画面を閉じると再表示できません。本人に直接伝えてください。
@@ -171,27 +195,38 @@ export function OperatorManager({
         </div>
       )}
 
-      <section aria-label="担当者一覧">
-        <h3 className="operator-heading">担当者一覧</h3>
+      <section aria-label="アカウント一覧">
+        <h3 className="operator-heading">アカウント一覧</h3>
         {loading && <p className="muted" role="status">読み込み中…</p>}
-        {!loading && operators.length === 0 && <p className="muted">担当者はまだいません。</p>}
+        {!loading && operators.length === 0 && <p className="muted">アカウントはまだありません。</p>}
         <ul className="operator-list">
           {operators.map((item) => {
             const self = item.loginId === currentLoginId;
-            const manageable = item.role === 'operator' && !self;
+            const manageable = allowedRoles.includes(normalizeRole(item.role)) && !self;
             return (
               <li key={item.loginId} className="operator-row">
                 <div>
                   <strong>{item.displayName}</strong>
                   <span className="muted operator-meta">
                     {item.loginId}
-                    {item.role === 'owner' ? '・運営責任者' : ''}
+                    {`・${ROLE_LABELS[normalizeRole(item.role)]}`}
                     {self ? '・自分' : ''}
                     {!item.active ? '・利用停止中' : item.mustChange ? '・初回変更待ち' : ''}
                   </span>
                 </div>
                 {manageable && (
                   <div className="operator-actions">
+                    <select
+                      className="field-input operator-role-select"
+                      aria-label={`${item.displayName}のロール`}
+                      value={normalizeRole(item.role)}
+                      disabled={acting}
+                      onChange={(e) => setPendingRole({ operator: item, role: e.target.value as OperatorRole })}
+                    >
+                      {allowedRoles.map((r) => (
+                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                      ))}
+                    </select>
                     <ActionButton tone="quiet" disabled={acting} onClick={() => setPending({ operator: item, action: 'reset' })}>
                       <KeyRound size={16} />
                       再発行
@@ -213,13 +248,13 @@ export function OperatorManager({
 
       <form
         className="settings-form"
-        aria-label="担当者を追加"
+        aria-label="アカウントを追加"
         onSubmit={(e) => {
           e.preventDefault();
           void create();
         }}
       >
-        <h3 className="operator-heading">担当者を追加</h3>
+        <h3 className="operator-heading">アカウントを追加</h3>
         <label className="field-label">
           運営ID <span className="muted">半角英数字・-・_ の3〜40文字</span>
           <input
@@ -231,6 +266,19 @@ export function OperatorManager({
             onChange={(e) => setLoginId(e.target.value)}
             disabled={creating}
           />
+        </label>
+        <label className="field-label">
+          ロール
+          <select
+            className="field-input"
+            value={role}
+            onChange={(e) => setRole(e.target.value as OperatorRole)}
+            disabled={creating}
+          >
+            {allowedRoles.map((r) => (
+              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+            ))}
+          </select>
         </label>
         <label className="field-label">
           表示名
@@ -258,6 +306,22 @@ export function OperatorManager({
         action={pending ? ACTION_TEXT[pending.action].action : ''}
         actionTone={pending?.action === 'disable' ? 'danger' : 'primary'}
         onConfirm={() => void runAction()}
+      />
+
+      <ConfirmDialog
+        open={!!pendingRole}
+        onOpenChange={(open) => {
+          if (!open && !acting) setPendingRole(null);
+        }}
+        title="ロールを変更しますか？"
+        description={
+          pendingRole
+            ? `${pendingRole.operator.displayName}（${pendingRole.operator.loginId}）を「${ROLE_LABELS[normalizeRole(pendingRole.operator.role)]}」から「${ROLE_LABELS[pendingRole.role]}」に変更します。このアカウントはログアウトされ、次のログインから新しい権限になります。`
+            : ''
+        }
+        action="変更する"
+        actionTone="primary"
+        onConfirm={() => void runRoleChange()}
       />
     </div>
   );

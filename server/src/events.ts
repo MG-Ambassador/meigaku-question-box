@@ -5,8 +5,11 @@ import {
   COLLECTION_EVENTS,
   COLLECTION_EVENT_STATS,
   COLLECTION_AUDIT,
+  COLLECTION_QUESTIONS,
+  COLLECTION_USER_FAVORITES,
   Timestamp,
 } from './firestore.js';
+import { can } from './permissions.js';
 import {
   CreateEventSchema,
   PatchEventSchema,
@@ -288,6 +291,12 @@ export async function patchEventHandler(req: Request, res: Response): Promise<vo
       if (existing.status === 'deleted') {
         return { status: 400, code: 'EVENT_DELETED', message: '削除されたイベントは変更できません。' };
       }
+      const changesDetails =
+        (title !== undefined && title.trim() !== existing.title) ||
+        (date !== undefined && date.trim() !== (existing.date || ''));
+      if (changesDetails && !can(req.adminUser?.role, 'room.manage')) {
+        return { status: 403, code: 'FORBIDDEN', message: 'スタッフは受付の開始・終了だけ操作できます。タイトルや日付は変更できません。' };
+      }
       if (existing.status === 'archived' && open === true) {
         return { status: 400, code: 'INVALID_TRANSITION', message: 'アーカイブ済みイベントの受付を直接再開することはできません。通常状態へ戻してください。' };
       }
@@ -494,6 +503,74 @@ export async function lifecycleEventHandler(req: Request, res: Response): Promis
       error: {
         code: 'STORAGE_UNAVAILABLE',
         message: 'イベント状態の更新に失敗しました。',
+      },
+    });
+  }
+}
+
+const DELETE_BATCH_SIZE = 400;
+
+async function deleteRefsInBatches(refs: FirebaseFirestore.DocumentReference[]): Promise<void> {
+  const db = getFirestore();
+  for (let i = 0; i < refs.length; i += DELETE_BATCH_SIZE) {
+    const batch = db.batch();
+    for (const ref of refs.slice(i, i + DELETE_BATCH_SIZE)) batch.delete(ref);
+    await batch.commit();
+  }
+}
+
+/**
+ * POST /api/admin/trash/empty
+ * ごみ箱を空にする（責任者のみ）。ごみ箱のルームと、その質問・お気に入り・集計を完全に削除する。
+ * ルーム本体は「まだごみ箱にあること」をトランザクションで確かめてから消すので、
+ * 同時に復元されたルームを巻き込むことはない。取り消しはできない。
+ */
+export async function emptyTrashHandler(req: Request, res: Response): Promise<void> {
+  const actorSub = req.adminUser?.sub || 'system';
+  const db = getFirestore();
+  try {
+    const trashed = await db.collection(COLLECTION_EVENTS).where('status', '==', 'deleted').get();
+    const deletedIds: string[] = [];
+    let deletedQuestions = 0;
+
+    for (const doc of trashed.docs) {
+      const eventRef = db.collection(COLLECTION_EVENTS).doc(doc.id);
+      const statsRef = db.collection(COLLECTION_EVENT_STATS).doc(doc.id);
+      const auditRef = db.collection(COLLECTION_AUDIT).doc(crypto.randomUUID());
+      const removed = await db.runTransaction(async (transaction) => {
+        const [snap, statsSnap] = await Promise.all([transaction.get(eventRef), transaction.get(statsRef)]);
+        if (!snap.exists || (snap.data() as EventDoc).status !== 'deleted') return false;
+        const existing = snap.data() as EventDoc;
+        transaction.delete(eventRef);
+        if (statsSnap.exists) transaction.delete(statsRef);
+        const auditLog: AuditDoc = {
+          actorSub,
+          action: 'event_purge',
+          eventId: doc.id,
+          version: existing.version,
+          createdAt: Timestamp.now(),
+        };
+        transaction.set(auditRef, auditLog);
+        return true;
+      });
+      if (!removed) continue;
+
+      const [questions, favorites] = await Promise.all([
+        db.collection(COLLECTION_QUESTIONS).where('eventId', '==', doc.id).get(),
+        db.collection(COLLECTION_USER_FAVORITES).where('eventId', '==', doc.id).get(),
+      ]);
+      await deleteRefsInBatches([...questions.docs, ...favorites.docs].map((d) => d.ref));
+      deletedIds.push(doc.id);
+      deletedQuestions += questions.docs.length;
+    }
+
+    res.json({ ok: true, deletedEvents: deletedIds.length, deletedQuestions, ids: deletedIds });
+  } catch (error) {
+    console.error('Error emptying trash:', error);
+    res.status(503).json({
+      error: {
+        code: 'STORAGE_UNAVAILABLE',
+        message: 'ごみ箱を空にできませんでした。時間をおいてもう一度お試しください。',
       },
     });
   }

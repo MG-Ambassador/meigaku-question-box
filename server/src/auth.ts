@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { AdminIdentity } from './types.js';
 import { resolveSession } from './sessions.js';
+import { can, type Permission } from './permissions.js';
 
 declare global {
   namespace Express {
@@ -97,13 +98,20 @@ export async function requireAdminAuth(req: Request, res: Response, next: NextFu
   next();
 }
 
-/** 運営責任者（owner）専用。requireAdminAuth の後に置く */
-export function requireOwner(req: Request, res: Response, next: NextFunction): void {
-  if (req.adminUser?.role !== 'owner') {
-    res.status(403).json({
-      error: { code: 'FORBIDDEN', message: '運営責任者だけが利用できます。' },
-    });
-    return;
-  }
-  next();
+const PERMISSION_MESSAGES: Record<Permission, string> = {
+  'room.toggleOpen': 'この操作の権限がありません。',
+  'room.manage': 'ルームの作成・編集はできません（スタッフは受付の開始・終了だけ操作できます）。',
+  'trash.empty': 'ごみ箱を空にできるのは開発者・責任者だけです。',
+  'accounts.manage': 'アカウント管理は開発者・責任者だけが利用できます。',
+};
+
+/** ロールに権限があれば通す。requireAdminAuth の後に置く（ロールの一覧は permissions.ts） */
+export function requirePermission(permission: Permission) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!can(req.adminUser?.role, permission)) {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: PERMISSION_MESSAGES[permission] } });
+      return;
+    }
+    next();
+  };
 }

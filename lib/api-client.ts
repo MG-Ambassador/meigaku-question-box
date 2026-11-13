@@ -179,7 +179,8 @@ export async function submitQuestion(params: {
   });
 }
 
-export type OperatorRole = 'owner' | 'operator';
+import type { OperatorRole } from './roles';
+export type { OperatorRole } from './roles';
 
 export interface AdminUser {
   displayName: string;
@@ -251,7 +252,7 @@ export function listOperators(token: string, signal?: AbortSignal): Promise<Oper
  */
 export function createOperator(
   token: string,
-  data: { loginId: string; displayName: string }
+  data: { loginId: string; displayName: string; role: OperatorRole }
 ): Promise<{ loginId: string; displayName: string; temporaryPassword: string }> {
   return apiFetch('/api/admin/operators', { method: 'POST', token, body: JSON.stringify(data) });
 }
@@ -268,6 +269,21 @@ export function operatorAction(
     method: 'POST',
     token,
     body: '{}',
+  });
+}
+
+/**
+ * アカウント管理：既存アカウントのロールを変更（対象者はログアウトされる）
+ */
+export function changeOperatorRole(
+  token: string,
+  loginId: string,
+  role: OperatorRole
+): Promise<{ ok: boolean; loginId: string; role: OperatorRole; changed: boolean }> {
+  return apiFetch(`/api/admin/operators/${encodeURIComponent(loginId)}/role`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ role }),
   });
 }
 
@@ -343,6 +359,13 @@ export function changeAdminEventLifecycle(
     token,
     body: JSON.stringify({ action, version }),
   });
+}
+
+/** 運営（責任者のみ）：ごみ箱のルームと、その質問を完全に削除する。取り消しはできない。 */
+export function emptyAdminTrash(
+  token: string
+): Promise<{ ok: boolean; deletedEvents: number; deletedQuestions: number; ids: string[] }> {
+  return apiFetch('/api/admin/trash/empty', { method: 'POST', token, body: JSON.stringify({}) });
 }
 
 export function updateAdminEvent(

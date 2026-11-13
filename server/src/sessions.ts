@@ -6,6 +6,7 @@ import {
   Timestamp,
 } from './firestore.js';
 import type { AdminIdentity, OperatorDoc, OperatorSessionDoc } from './types.js';
+import { normalizeRole } from './permissions.js';
 
 /** セッションの有効期間（ログインから8時間。延長はしない） */
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -21,7 +22,7 @@ export function toIdentity(loginId: string, doc: OperatorDoc): AdminIdentity {
     sub: loginId,
     loginId,
     displayName: doc.displayName,
-    role: doc.role,
+    role: normalizeRole(doc.role),
     mustChange: doc.mustChange === true,
   };
 }

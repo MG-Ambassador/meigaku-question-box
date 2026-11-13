@@ -11,11 +11,13 @@ import {
   Plus,
   Settings2,
   Share2,
+  Trash2,
   UserRound,
   UsersRound,
 } from 'lucide-react';
-import { getAdminEvents, ApiError, type AdminUser, type AuthSession, type EventItem } from '@/lib/api-client';
+import { emptyAdminTrash, getAdminEvents, ApiError, type AdminUser, type AuthSession, type EventItem } from '@/lib/api-client';
 import { GUEST_TOKEN } from '@/lib/guest-admin';
+import { can, normalizeRole, ROLE_LABELS } from '@/lib/roles';
 import PasswordChange from '@/components/password-change';
 import { OperatorManager } from '@/components/question-box/operator-manager';
 import { ActionButton } from '@/components/question-box/action-button';
@@ -48,7 +50,11 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [operatorsOpen, setOperatorsOpen] = useState(false);
   const isGuest = token === GUEST_TOKEN;
-  const isOwner = !isGuest && adminUser.role === 'owner';
+  const role = isGuest ? 'ambassador' : normalizeRole(adminUser.role);
+  const canManageAccounts = !isGuest && can(role, 'accounts.manage');
+  const canManageRooms = can(role, 'room.manage');
+  // 開発用ギャラリーは開発環境だけ（本番ビルドからは除外される）
+  const showDevTools = process.env.NODE_ENV !== 'production';
   const [events, setEvents] = useState<EventItem[]>([]);
   const [eventId, setEventId] = useState('');
   const [tab, setTab] = useState<AdminTab>('questions');
@@ -69,6 +75,10 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
   const [pendingLogout, setPendingLogout] = useState(false);
   const [pendingCreateRoom, setPendingCreateRoom] = useState(false);
   const [devGalleryOpen, setDevGalleryOpen] = useState(false);
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
+  const [emptyingTrash, setEmptyingTrash] = useState(false);
+  const [trashMessage, setTrashMessage] = useState('');
+  const canEmptyTrash = isGuest || can(role, 'trash.empty');
   const saving = useRef(false);
   const createSaving = useRef(false);
   const acceptedIndex = useRef(0);
@@ -262,6 +272,38 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
   const archivedRooms = events.filter((e) => e.status === 'archived');
   const deletedRooms = events.filter((e) => e.status === 'deleted');
 
+  async function handleEmptyTrash() {
+    if (emptyingTrash) return;
+    setConfirmEmptyTrash(false);
+    setEmptyingTrash(true);
+    setTrashMessage('');
+    try {
+      const result = await emptyAdminTrash(token);
+      const removed = new Set(result.ids);
+      const remaining = events.filter((e) => !removed.has(e.id));
+      setEvents(remaining);
+      if (removed.has(eventId)) {
+        const next = remaining.find((e) => !e.status || e.status === 'active')?.id || remaining[0]?.id || '';
+        const url = new URL(window.location.href);
+        if (next) url.searchParams.set('event', next);
+        else url.searchParams.delete('event');
+        writeAdminHistory(`${url.pathname}${url.search}`, true);
+        setEventId(next);
+      }
+      setTrashMessage(
+        result.deletedEvents > 0
+          ? `ごみ箱を空にしました（ルーム ${result.deletedEvents} 件・質問 ${result.deletedQuestions} 件を削除）。`
+          : 'ごみ箱は空でした。'
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.statusCode === 401) onLogout();
+      else if (e instanceof ApiError && e.statusCode === 403) setTrashMessage('ごみ箱を空にできるのは開発者・責任者だけです。');
+      else setTrashMessage('ごみ箱を空にできませんでした。時間をおいてもう一度お試しください。');
+    } finally {
+      setEmptyingTrash(false);
+    }
+  }
+
   function getStatusLabel(item: EventItem) {
     if (item.status === 'deleted') return 'ごみ箱';
     if (item.status === 'archived') return 'アーカイブ';
@@ -344,7 +386,7 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
           <ActionButton tone="quiet" onClick={() => setAccount(true)} aria-label="アカウント">
             <UserRound size={20} />
           </ActionButton>
-          {process.env.NODE_ENV !== 'production' && (
+          {showDevTools && (
             <ActionButton
               tone="quiet"
               onClick={() => setDevGalleryOpen(true)}
@@ -441,6 +483,7 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
           onBusyChange={(busy) => { saving.current = busy; }}
           saveRef={saveRef}
           discardRef={discardRef}
+          canManageRooms={canManageRooms}
         />
       )}
 
@@ -452,7 +495,7 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
         </section>
       )}
 
-      {(tab === 'settings' || (!event && !loading)) && (
+      {canManageRooms && (tab === 'settings' || (!event && !loading)) && (
         <ActionButton
           className="create-event-button"
           tone="secondary"
@@ -468,7 +511,7 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
         open={account}
         onOpenChange={setAccount}
         title="アカウント"
-        description={`${adminUser.displayName}${adminUser.loginId ? `（${adminUser.loginId}）` : ''} でログイン中`}
+        description={`${adminUser.displayName}${adminUser.loginId ? `（${adminUser.loginId}）` : ''}・${ROLE_LABELS[role]} でログイン中`}
       >
         <div className="account-actions">
           {passwordChanged && (
@@ -480,10 +523,10 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
               パスワードを変更
             </ActionButton>
           )}
-          {isOwner && (
+          {canManageAccounts && (
             <ActionButton tone="secondary" onClick={() => { setAccount(false); setOperatorsOpen(true); }}>
               <UsersRound size={18} />
-              担当者を管理
+              アカウントを管理
             </ActionButton>
           )}
           <ActionButton tone="secondary" onClick={handleLogoutClick}>
@@ -514,16 +557,18 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
         </AppSheet>
       )}
 
-      {/* Operator Management Sheet (owner only) */}
-      {isOwner && (
+      {/* Account Management Sheet (developer / owner) */}
+      {canManageAccounts && (
         <AppSheet
           open={operatorsOpen}
           onOpenChange={setOperatorsOpen}
-          title="担当者を管理"
-          description="担当者の追加、仮パスワードの再発行、利用停止ができます。"
+          title="アカウントを管理"
+          description={role === 'developer'
+            ? 'すべてのロールのアカウントの追加・ロール変更・再発行・利用停止ができます。'
+            : '教員・アンバサダー・スタッフのアカウントの追加・ロール変更・再発行・利用停止ができます。'}
         >
           {operatorsOpen && (
-            <OperatorManager token={token} currentLoginId={adminUser.loginId} onAuthError={onLogout} />
+            <OperatorManager token={token} currentLoginId={adminUser.loginId} currentRole={role} onAuthError={onLogout} />
           )}
         </AppSheet>
       )}
@@ -673,21 +718,42 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
                 ごみ箱は空です。
               </p>
             )}
+            {roomStatusTab === 'deleted' && (
+              <div className="trash-footer">
+                {canEmptyTrash && deletedRooms.length > 0 && (
+                  <ActionButton
+                    tone="danger"
+                    className="full-width"
+                    disabled={emptyingTrash}
+                    onClick={() => setConfirmEmptyTrash(true)}
+                  >
+                    <Trash2 size={18} aria-hidden="true" />
+                    {emptyingTrash ? '削除しています…' : 'ごみ箱を空にする'}
+                  </ActionButton>
+                )}
+                {!canEmptyTrash && deletedRooms.length > 0 && (
+                  <p className="muted">ごみ箱を空にできるのは開発者・責任者だけです。</p>
+                )}
+                <p className="muted" role="status">{trashMessage}</p>
+              </div>
+            )}
           </div>
 
-          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-            <ActionButton
-              tone="secondary"
-              className="full-width"
-              onClick={() => {
-                setRoomListOpen(false);
-                openCreateRoom();
-              }}
-            >
-              <Plus size={18} />
-              新しいルームを作る
-            </ActionButton>
-          </div>
+          {canManageRooms && (
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+              <ActionButton
+                tone="secondary"
+                className="full-width"
+                onClick={() => {
+                  setRoomListOpen(false);
+                  openCreateRoom();
+                }}
+              >
+                <Plus size={18} />
+                新しいルームを作る
+              </ActionButton>
+            </div>
+          )}
         </div>
       </AppSheet>
 
@@ -792,8 +858,20 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
         cancelText="作成をキャンセル"
       />
 
-      {/* Dev-only Component Gallery Sheet */}
-      {process.env.NODE_ENV !== 'production' && (
+      {/* Empty Trash Confirmation */}
+      <ConfirmDialog
+        open={confirmEmptyTrash}
+        onOpenChange={setConfirmEmptyTrash}
+        title="ごみ箱を空にしますか？"
+        description={`ごみ箱のルーム ${deletedRooms.length} 件と、その質問・お気に入り・集計をすべて完全に削除します。この操作は取り消せません。`}
+        action="完全に削除する"
+        actionTone="danger"
+        onConfirm={() => void handleEmptyTrash()}
+        cancelText="やめる"
+      />
+
+      {/* Component Gallery Sheet (dev build, or developer role in production) */}
+      {showDevTools && (
         <AppSheet
           open={devGalleryOpen}
           onOpenChange={setDevGalleryOpen}

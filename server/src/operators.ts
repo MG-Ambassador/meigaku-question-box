@@ -11,6 +11,7 @@ import {
   LoginSchema,
   PasswordChangeSchema,
   CreateOperatorSchema,
+  ChangeOperatorRoleSchema,
   OPERATOR_ACTIONS,
   type AuditDoc,
   type OperatorAction,
@@ -33,6 +34,7 @@ import {
   type RateLimitCheckResult,
   type RateLimitPolicy,
 } from './rate-limit.js';
+import { manageableRoles, normalizeRole, ROLE_LABELS } from './permissions.js';
 
 /** 同一IPからのログイン試行: 10分30回 */
 export const LOGIN_IP_LIMIT: RateLimitPolicy = { windowSeconds: 600, max: 30 };
@@ -238,7 +240,7 @@ export async function listOperatorsHandler(_req: Request, res: Response): Promis
         return {
           loginId: doc.id,
           displayName: data.displayName,
-          role: data.role,
+          role: normalizeRole(data.role),
           active: data.active === true,
           mustChange: data.mustChange === true,
           createdAt: data.createdAt?.toMillis?.() ?? 0,
@@ -268,6 +270,11 @@ export async function createOperatorHandler(req: Request, res: Response): Promis
     return;
   }
   const displayName = parsed.data.displayName;
+  const role = parsed.data.role;
+  if (!manageableRoles(actor.role).includes(role)) {
+    sendError(res, 403, 'FORBIDDEN', `${ROLE_LABELS[role]}のアカウントは作成できません。`);
+    return;
+  }
 
   try {
     const temporaryPassword = generateTemporaryPassword();
@@ -283,7 +290,7 @@ export async function createOperatorHandler(req: Request, res: Response): Promis
         loginId,
         displayName,
         passwordHash,
-        role: 'operator',
+        role,
         active: true,
         mustChange: true,
         version: 1,
@@ -338,8 +345,8 @@ export async function operatorActionHandler(req: Request, res: Response): Promis
       const snap = await transaction.get(ref);
       if (!snap.exists) return { status: 404, code: 'OPERATOR_NOT_FOUND', message: '担当者が見つかりません。' } as const;
       const current = snap.data() as OperatorDoc;
-      if (current.role !== 'operator') {
-        return { status: 403, code: 'FORBIDDEN', message: '運営責任者のアカウントは管理画面から変更できません。' } as const;
+      if (!manageableRoles(actor.role).includes(normalizeRole(current.role))) {
+        return { status: 403, code: 'FORBIDDEN', message: `${ROLE_LABELS[normalizeRole(current.role)]}のアカウントは変更できません。` } as const;
       }
       const version = current.version + 1;
       const update: Partial<OperatorDoc> = { version, updatedAt: now };
@@ -366,5 +373,67 @@ export async function operatorActionHandler(req: Request, res: Response): Promis
     });
   } catch (error) {
     unavailable(res, error, '担当者を更新できませんでした。');
+  }
+}
+
+/**
+ * POST /api/admin/operators/:id/role（アカウント管理権限）
+ * 既存アカウントのロールを変更する。変更前・変更後のどちらのロールも操作者が管理できる範囲に限る。
+ * version を進めて対象者の全セッションを無効化し、新しいロールで再ログインさせる。
+ */
+export async function changeOperatorRoleHandler(req: Request, res: Response): Promise<void> {
+  const actor = req.adminUser!;
+  const parsed = ChangeOperatorRoleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendError(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message || 'ロールを選んでください。');
+    return;
+  }
+  const role = parsed.data.role;
+  const loginId = normalizeLoginId(req.params.id);
+  if (!loginId) {
+    sendError(res, 404, 'OPERATOR_NOT_FOUND', 'アカウントが見つかりません。');
+    return;
+  }
+  if (loginId === actor.loginId) {
+    sendError(res, 400, 'SELF_OPERATION', '自分自身のロールは変更できません。');
+    return;
+  }
+  const allowed = manageableRoles(actor.role);
+  if (!allowed.includes(role)) {
+    sendError(res, 403, 'FORBIDDEN', `${ROLE_LABELS[role]}には変更できません。`);
+    return;
+  }
+
+  try {
+    const db = getFirestore();
+    const ref = db.collection(COLLECTION_OPERATORS).doc(loginId);
+    const now = Timestamp.now();
+
+    const result = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) return { status: 404, code: 'OPERATOR_NOT_FOUND', message: 'アカウントが見つかりません。' } as const;
+      const current = snap.data() as OperatorDoc;
+      const currentRole = normalizeRole(current.role);
+      if (!allowed.includes(currentRole)) {
+        return { status: 403, code: 'FORBIDDEN', message: `${ROLE_LABELS[currentRole]}のアカウントは変更できません。` } as const;
+      }
+      if (current.role === role) return { status: 200, changed: false } as const;
+      const version = current.version + 1;
+      transaction.update(ref, { role, version, updatedAt: now });
+      transaction.set(
+        db.collection(COLLECTION_AUDIT).doc(crypto.randomUUID()),
+        audit(actor.loginId, `operator_role_${currentRole}_to_${role}`, loginId, version, now)
+      );
+      return { status: 200, changed: true } as const;
+    });
+
+    if (result.status !== 200) {
+      sendError(res, result.status, result.code, result.message);
+      return;
+    }
+    if (result.changed) await revokeAllSessions(loginId);
+    res.json({ ok: true, loginId, role, changed: result.changed });
+  } catch (error) {
+    unavailable(res, error, 'ロールを変更できませんでした。');
   }
 }

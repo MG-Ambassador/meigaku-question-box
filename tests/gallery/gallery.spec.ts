@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('development gallery shows 13 previews with working filters and nested dialogs', async ({ page }) => {
+test('development gallery shows 14 previews with working filters and nested dialogs', async ({ page }) => {
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname;
     const user = { sub: 'test', loginId: 'test', displayName: '運営', role: 'operator', mustChange: false };
@@ -16,7 +16,7 @@ test('development gallery shows 13 previews with working filters and nested dial
   const trigger = page.getByRole('button', { name: 'UI部品ギャラリー（開発専用）' });
   await trigger.click();
   const gallery = page.locator('.dev-gallery');
-  await expect(gallery.locator(':scope > section')).toHaveCount(13);
+  await expect(gallery.locator(':scope > section')).toHaveCount(14);
   const filters = gallery.getByRole('radiogroup', { name: 'テーマで絞り込み' });
   await filters.getByRole('radio', { name: 'すべて', exact: true }).click();
   await filters.getByRole('radio', { name: 'すべて', exact: true }).focus();

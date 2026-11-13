@@ -12,6 +12,7 @@ import { ActionButton } from '@/components/question-box/action-button';
 import { AppSheet } from '@/components/question-box/app-sheet';
 import { ConfirmDialog } from '@/components/question-box/confirm-dialog';
 import { ShareControls } from '@/components/question-box/share-controls';
+import { SealedLetter } from '@/components/question-box/sealed-letter';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { CATEGORIES } from '@/lib/question-draft';
@@ -28,6 +29,7 @@ export function ComponentGallery() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [favoriteActive, setFavoriteActive] = useState(true);
+  const [letterRun, setLetterRun] = useState(0);
   const [undoActive, setUndoActive] = useState(true);
 
   return (
@@ -313,6 +315,13 @@ export function ComponentGallery() {
       <section className="surface" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <h2>13. 共有コントロール（ShareControls）</h2>
         <ShareControls eventId="sample-room" title="オープンキャンパス質問箱" operator />
+      </section>
+
+      {/* 14. 投函の演出 */}
+      <section className="surface" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <h2>14. 投函の演出（SealedLetter：受付印 → 封筒 → 封蝋）</h2>
+        <SealedLetter key={letterRun} body="オープンキャンパスの学食は誰でも利用できますか？" />
+        <ActionButton tone="quiet" onClick={() => setLetterRun((n) => n + 1)}><RotateCcw size={16} aria-hidden="true" />もう一度再生</ActionButton>
       </section>
     </div>
   );

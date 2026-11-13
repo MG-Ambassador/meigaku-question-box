@@ -43,6 +43,7 @@ export function EventWorkspace({
   onBusyChange,
   saveRef,
   discardRef,
+  canManageRooms = true,
 }: {
   event: EventItem;
   token: string;
@@ -54,6 +55,8 @@ export function EventWorkspace({
   onBusyChange?: (busy: boolean) => void;
   saveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   discardRef?: React.MutableRefObject<(() => void) | null>;
+  /** false のとき（スタッフ）は受付の開始・終了だけ操作できる */
+  canManageRooms?: boolean;
 }) {
   const [report, setReport] = useState<ReportData | null>(null);
   const snapshot = useRef<ReportData | null>(null);
@@ -947,6 +950,7 @@ export function EventWorkspace({
           onBusyChange={onBusyChange}
           saveRef={saveRef}
           discardRef={discardRef}
+          canManage={canManageRooms}
         />
       </section>
     </div>

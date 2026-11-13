@@ -146,14 +146,15 @@ export interface AuditDoc {
 }
 
 // 運営アカウント
-export const OPERATOR_ROLES = ['owner', 'operator'] as const;
-export type OperatorRole = (typeof OPERATOR_ROLES)[number];
+export { OPERATOR_ROLES, type OperatorRole } from './permissions.js';
+import { OPERATOR_ROLES, type OperatorRole, type LegacyOperatorRole } from './permissions.js';
 
 export interface OperatorDoc {
   loginId: string;
   displayName: string;
   passwordHash: string;
-  role: OperatorRole;
+  /** 読むときは normalizeRole() を通す（旧ロール 'operator' が残っている場合がある） */
+  role: OperatorRole | LegacyOperatorRole;
   active: boolean;
   mustChange: boolean;
   version: number;
@@ -181,6 +182,11 @@ export const PasswordChangeSchema = z.object({
 export const CreateOperatorSchema = z.object({
   loginId: z.string().max(100),
   displayName: z.string().trim().min(1, '表示名を入力してください').max(60, '表示名は60文字以内で入力してください'),
+  role: z.enum(OPERATOR_ROLES, { errorMap: () => ({ message: 'ロールを選んでください' }) }).default('ambassador'),
+});
+
+export const ChangeOperatorRoleSchema = z.object({
+  role: z.enum(OPERATOR_ROLES, { errorMap: () => ({ message: 'ロールを選んでください' }) }),
 });
 
 export const OPERATOR_ACTIONS = ['reset', 'disable', 'enable'] as const;
