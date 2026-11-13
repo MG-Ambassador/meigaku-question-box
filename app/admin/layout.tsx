@@ -17,7 +17,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           明学の質問箱 <span>運営管理</span>
         </a>
         <div>
-          <LockKeyhole size={16} /> 担当者専用
+          <LockKeyhole size={16} /> 運営者専用
         </div>
       </header>
       {children}

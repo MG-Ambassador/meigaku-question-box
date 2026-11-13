@@ -563,8 +563,8 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
           onOpenChange={setOperatorsOpen}
           title="アカウントを管理"
           description={role === 'developer'
-            ? 'すべてのロールのアカウントを追加・再発行・利用停止できます。'
-            : '教員・アンバサダー・スタッフのアカウントを追加・再発行・利用停止できます。'}
+            ? 'すべてのロールのアカウントの追加・ロール変更・再発行・利用停止ができます。'
+            : '教員・アンバサダー・スタッフのアカウントの追加・ロール変更・再発行・利用停止ができます。'}
         >
           {operatorsOpen && (
             <OperatorManager token={token} currentLoginId={adminUser.loginId} currentRole={role} onAuthError={onLogout} />
