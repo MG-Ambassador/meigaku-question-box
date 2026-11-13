@@ -103,7 +103,6 @@ const PERMISSION_MESSAGES: Record<Permission, string> = {
   'room.manage': 'ルームの作成・編集はできません（スタッフは受付の開始・終了だけ操作できます）。',
   'trash.empty': 'ごみ箱を空にできるのは開発者・責任者だけです。',
   'accounts.manage': 'アカウント管理は開発者・責任者だけが利用できます。',
-  'devtools': '開発者だけが利用できます。',
 };
 
 /** ロールに権限があれば通す。requireAdminAuth の後に置く（ロールの一覧は permissions.ts） */

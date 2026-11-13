@@ -53,7 +53,8 @@ export default function Panel({ token, adminUser, onLogout, onSessionChange }: P
   const role = isGuest ? 'ambassador' : normalizeRole(adminUser.role);
   const canManageAccounts = !isGuest && can(role, 'accounts.manage');
   const canManageRooms = can(role, 'room.manage');
-  const showDevTools = process.env.NODE_ENV !== 'production' || can(role, 'devtools');
+  // 開発用ギャラリーは開発環境だけ（本番ビルドからは除外される）
+  const showDevTools = process.env.NODE_ENV !== 'production';
   const [events, setEvents] = useState<EventItem[]>([]);
   const [eventId, setEventId] = useState('');
   const [tab, setTab] = useState<AdminTab>('questions');

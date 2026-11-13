@@ -20,11 +20,10 @@ export type Permission =
   | 'room.toggleOpen'
   | 'room.manage'
   | 'trash.empty'
-  | 'accounts.manage'
-  | 'devtools';
+  | 'accounts.manage';
 
 const GRANTS: Record<OperatorRole, readonly Permission[]> = {
-  developer: ['room.toggleOpen', 'room.manage', 'trash.empty', 'accounts.manage', 'devtools'],
+  developer: ['room.toggleOpen', 'room.manage', 'trash.empty', 'accounts.manage'],
   owner: ['room.toggleOpen', 'room.manage', 'trash.empty', 'accounts.manage'],
   faculty: ['room.toggleOpen', 'room.manage'],
   ambassador: ['room.toggleOpen', 'room.manage'],
