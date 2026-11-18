@@ -385,7 +385,6 @@ export function QuestionForm({
         </div>
         {step === 3 && !draft.pending && (
           <div className="question-review envelope">
-            <span className="stamp-box" aria-hidden="true">受付印</span>
             <dl>
               <dt>テーマ</dt>
               <dd>{draft.category}</dd>
