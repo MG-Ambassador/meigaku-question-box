@@ -319,7 +319,7 @@ export function ComponentGallery() {
 
       {/* 14. 投函の演出 */}
       <section className="surface" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <h2>14. 投函の演出（SealedLetter：受付印 → 封筒 → 封蝋）</h2>
+        <h2>14. 投函の演出（SealedLetter：封筒 → 受付印）</h2>
         <SealedLetter key={letterRun} body="オープンキャンパスの学食は誰でも利用できますか？" />
         <ActionButton tone="quiet" onClick={() => setLetterRun((n) => n + 1)}><RotateCcw size={16} aria-hidden="true" />もう一度再生</ActionButton>
       </section>

@@ -149,7 +149,6 @@
   --motion-feedback: 120ms;
   --motion-release: 160ms;
   --motion-sheet: 240ms;
-  --motion-seal: 420ms;
   --motion-ease: cubic-bezier(.2, 0, 0, 1);
 }
 html { scroll-padding-top: 24px; }
@@ -1139,13 +1138,12 @@ a { color: inherit; }
 
 /* 封筒（確認と完了） */
 .envelope, .question-review { position: relative; background: var(--paper-raised); border: 1px solid var(--rule); border-left: 1px solid var(--rule); border-radius: var(--radius-arch) var(--radius-arch) var(--radius-xs) var(--radius-xs); box-shadow: var(--lift-2); padding: 22px 20px 16px; text-align: left; }
-.question-review dl { display: grid; grid-template-columns: 64px 1fr; row-gap: 12px; margin: 0 56px 8px 0; font-size: .875rem; line-height: 22px; }
+.question-review dl { display: grid; grid-template-columns: 64px 1fr; row-gap: 12px; margin: 0 0 8px; font-size: .875rem; line-height: 22px; }
 .question-review dt { color: var(--ink-soft); font-size: .75rem; letter-spacing: .1em; padding-top: 1px; }
 .question-review dd { margin: 0; overflow-wrap: anywhere; }
 .question-review dd small { display: block; font-size: .75rem; color: var(--ink-soft); }
 .question-review .review-body { white-space: pre-wrap; }
 .question-review .action-button { margin-left: -12px; }
-.stamp-box { position: absolute; top: 16px; right: 16px; width: 46px; height: 56px; border: 1px dashed var(--rule-strong); border-radius: 3px; display: grid; place-items: center; font-size: .625rem; letter-spacing: .1em; color: var(--ink-faint); writing-mode: vertical-rl; }
 
 /* 送信エリア */
 .submit-area { padding-top: 20px; display: flex; flex-direction: column; gap: 4px; }
@@ -1153,11 +1151,11 @@ a { color: inherit; }
 .send-button, .send-button .action-surface { min-height: 52px; }
 .submit-status { font-size: .75rem; color: var(--ink-soft); }
 
-/* 受付印（便箋に押す） */
+/* 受付印（封筒に押す） */
 .sk-seal { display: inline-block; color: var(--ink); transform: rotate(-8deg); }
 .sk-seal svg { display: block; overflow: visible; }
 .sk-seal text { font-family: var(--font-sans); font-weight: 700; fill: currentColor; }
-.sk-seal--press { animation: sk-seal-press var(--motion-seal) cubic-bezier(.2, .8, .2, 1) both; }
+.sk-seal--press { animation: sk-seal-press 420ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes sk-seal-press {
   0% { opacity: 0; transform: scale(1.5) rotate(-2deg); }
   70% { opacity: 1; transform: scale(.97) rotate(-9deg); }
@@ -1307,35 +1305,29 @@ a { color: inherit; }
   .stat-grid > div, .insight-card-button, .insight-stat-card { padding: 16px 18px; }
   .stat-grid strong { font-size: 2rem; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .sk-seal--press { animation: none !important; transform: rotate(-8deg); }
-}
-
-/* ---------- 投函の演出：便箋に受付印 → 封筒にしまう → フタを折る → 封蝋で閉じる ---------- */
+/* ---------- 投函の演出：便箋を封筒にしまう → フタを折る → 「受付」印を押す ---------- */
 .sealed-letter { position: relative; margin: 112px auto 0; max-width: 100%; perspective: 900px;
-  --wax: #9b2b25; --wax-hi: #c9564b; --wax-lo: #5e1713;
-  --t-stamp: 420ms; --d-stamp: 180ms;              /* ① 受付印 */
-  --d-sheet: 900ms; --t-sheet: 520ms;              /* ② 便箋をしまう（印を見せてから） */
-  --d-flap: 1420ms; --t-flap: 420ms;               /* ③ フタ */
-  --d-wax: 1900ms; --t-wax: 560ms; }               /* ④ 封蝋 */
+  --d-sheet: 0ms; --t-sheet: 480ms;                /* ① 便箋をしまう */
+  --d-flap: 480ms; --t-flap: 420ms;                /* ② フタ */
+  --d-stamp: 960ms; --t-stamp: 420ms; }            /* ③ 受付印（フタが閉じてから）。計約1.4秒 */
 .sealed-letter > * { position: absolute; left: 0; top: 0; }
 .sealed-letter svg { display: block; overflow: visible; }
 .sealed-letter-shadow { width: 100%; height: 100%; transform: translate(10px, 10px); background: var(--paper-sunk); border-radius: 2px; }
 .sealed-letter-back rect { fill: var(--paper-raised); stroke: var(--ink); stroke-width: 1.5; }
-.sealed-letter-sheet { left: 18px; right: 18px; top: 12px; height: 128px; z-index: 2; padding: 14px 64px 14px 16px; text-align: left; background: #fff; border: 1px solid var(--rule); border-radius: 2px;
+.sealed-letter-sheet { left: 18px; right: 18px; top: 12px; height: 128px; z-index: 2; padding: 14px 16px; text-align: left; background: #fff; border: 1px solid var(--rule); border-radius: 2px;
   background-image: repeating-linear-gradient(to bottom, transparent 0 23px, var(--rule) 23px 24px); background-origin: content-box; background-clip: content-box;
   animation: sealed-sheet var(--t-sheet) cubic-bezier(.5, 0, .2, 1) var(--d-sheet) both; }
 .sealed-letter-sheet p { margin: 0; font-size: .75rem; line-height: 24px; color: var(--ink-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.sealed-letter-stamp { position: absolute; top: 8px; right: 8px; color: var(--danger); }
-.sealed-letter-stamp .sk-seal { color: var(--danger); }
-.sealed-letter-stamp .sk-seal svg { width: 48px; height: 48px; }
-.sealed-letter-stamp .sk-seal--press { animation-duration: var(--t-stamp); animation-delay: var(--d-stamp); }
 .sealed-letter-pocket { z-index: 3; }
 .sealed-letter-pocket path { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .sealed-letter-pocket path.fill { fill: var(--paper-raised); stroke: none; }
 .sealed-letter-flap { z-index: 4; transform-origin: 50% 0; animation: sealed-flap var(--t-flap) cubic-bezier(.4, 0, .2, 1) var(--d-flap) both; }
 .sealed-letter-flap path { fill: var(--paper-raised); stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
 .sealed-letter-seal { left: 50%; z-index: 5; transform: translate(-50%, -50%); }
+.sealed-letter-seal .sk-seal { position: relative; color: var(--ink); }
+.sealed-letter-seal .sk-seal::before { content: ""; position: absolute; inset: 6px; border-radius: 999px; background: var(--light); z-index: -1; }  /* 印の下に季節の光 */
+.sealed-letter-seal .sk-seal svg { width: 64px; height: 64px; }
+.sealed-letter-seal .sk-seal--press { animation-duration: var(--t-stamp); animation-delay: var(--d-stamp); }
 @keyframes sealed-sheet { from { transform: translateY(-104px); } to { transform: translateY(0); } }
 @keyframes sealed-flap {
   0% { transform: rotateX(180deg); z-index: 1; }
@@ -1343,19 +1335,4 @@ a { color: inherit; }
   100% { transform: rotateX(0deg); z-index: 4; }
 }
 
-/* 封蝋：溶けた蝋が落ちて広がり、型を押されて落ち着く */
-.wax-seal { display: inline-block; transform: rotate(-6deg); filter: drop-shadow(0 1.5px 1px rgba(60, 12, 10, .35)); }
-.wax-seal svg { display: block; overflow: visible; }
-.wax-seal-mark { font-family: Georgia, "Times New Roman", serif; font-weight: 700; letter-spacing: .04em; fill: var(--wax-lo); opacity: .8; paint-order: stroke; stroke: var(--wax-hi); stroke-width: .6px; stroke-opacity: .5; }
-.wax-seal--press { animation: wax-seal-press var(--t-wax, 560ms) cubic-bezier(.2, .8, .2, 1) var(--d-wax, 0ms) both; }
-@keyframes wax-seal-press {
-  0% { opacity: 0; transform: translateY(-14px) scale(.45) rotate(-6deg); }
-  35% { opacity: 1; transform: translateY(0) scale(1.12, .9) rotate(-6deg); }
-  60% { transform: scale(.94, 1.04) rotate(-6deg); }
-  80% { transform: scale(1.02) rotate(-6deg); }
-  100% { opacity: 1; transform: scale(1) rotate(-6deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wax-seal--press { animation: none !important; transform: rotate(-6deg); }
-}
 @media (max-width: 330px) { .sealed-letter { transform: scale(.9); transform-origin: 50% 0; } }

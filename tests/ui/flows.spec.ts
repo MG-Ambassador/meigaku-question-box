@@ -120,9 +120,9 @@ test('direct input, tactile surface, successful submission and return to the roo
   await page.mouse.up();
   await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeFocused();
   expect(state.posted).toHaveLength(1); expect(state.posted[0].category).toBe('学び・授業');
-  // 完了画面には共有の操作を置かない。便箋に受付印が押されて封筒に入り、封蝋で閉じられる。
+  // 完了画面には共有の操作を置かない。便箋は封筒に入り、封筒に「受付」印が押される。便箋には押さない。
   await expect(page.getByRole('button', { name: 'この質問箱を共有' })).toHaveCount(0);
-  await expect(page.locator('.sealed-letter').getByRole('img', { name: '封蝋（受付済み）' })).toBeVisible();
+  await expect(page.locator('.sealed-letter').getByRole('img', { name: '受付' })).toBeVisible();
   // 下のボタンは ① ルームの扉（アーチの窓）へ戻る。
   await page.getByRole('button', { name: 'HOMEに戻る' }).click(); await expect(body).toHaveValue('');
   await expect(page.locator('.arch-window')).toBeInViewport();
