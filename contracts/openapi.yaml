@@ -190,7 +190,7 @@ paths:
   /api/questions:
     post:
       summary: 質問の匿名投稿
-      description: 来場者からの質問を投稿する。requestId による冪等性担保、IP による連投制限、集計更新を原子的に行う。
+      description: 来場者からの質問を投稿する。requestId による冪等性担保、端末（clientId）と回線（IP）による連投制限、集計更新を原子的に行う。
       requestBody:
         required: true
         content:
@@ -221,7 +221,7 @@ paths:
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
-          description: レート制限（10分間に5件超過）
+          description: レート制限（既定は同じ端末で10分5件、同じ回線で10分300件を超過。環境変数 SUBMISSION_LIMIT_PER_DEVICE / SUBMISSION_LIMIT_PER_IP で変更、0 で無効）
           headers:
             Retry-After:
               schema:
@@ -706,6 +706,10 @@ components:
           type: string
           format: uuid
           description: クライアント生成の再送識別子
+        clientId:
+          type: string
+          format: uuid
+          description: 端末ID（ブラウザが作って localStorage に保存する UUID）。端末ごとの投稿制限に使う。サーバーは HMAC 化して保存する。省略時は回線（IP）ごとの上限だけで判定する
 
     QuestionSubmissionResponse:
       type: object

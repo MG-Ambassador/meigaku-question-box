@@ -3,6 +3,7 @@
  */
 
 import { GUEST_TOKEN, guestFetch } from './guest-admin.ts';
+import { getClientId } from './client-id.ts';
 
 export interface ApiErrorDetail {
   code: string;
@@ -165,8 +166,14 @@ export async function submitQuestion(params: {
   category: string;
   source: 'web' | 'instagram';
   requestId?: string;
+  clientId?: string;
 }): Promise<{ ok: boolean; id: string; requestId: string }> {
   const requestId = params.requestId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '');
+  // 端末ごとの投稿制限に使う端末ID（会場 Wi-Fi で同じ IP を共有しても互いに影響しない）
+  let clientId = params.clientId;
+  if (!clientId && typeof crypto !== 'undefined') {
+    try { clientId = getClientId(); } catch { clientId = undefined; }
+  }
   return apiFetch<{ ok: boolean; id: string; requestId: string }>('/api/questions', {
     method: 'POST',
     body: JSON.stringify({
@@ -175,6 +182,7 @@ export async function submitQuestion(params: {
       category: params.category,
       source: params.source,
       requestId,
+      ...(clientId ? { clientId } : {}),
     }),
   });
 }

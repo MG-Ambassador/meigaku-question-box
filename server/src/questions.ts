@@ -18,8 +18,12 @@ import {
 import {
   extractClientIp,
   getRateLimitDocRef,
+  getDeviceLimitDocRef,
+  getSubmissionPolicies,
   evaluateRateLimitInTransaction,
+  type RateLimitCheckResult,
 } from './rate-limit.js';
+import type { DocumentReference } from '@google-cloud/firestore';
 
 /**
  * requestId から決定的な Firestore ドキュメントIDを生成する (SHA-256)
@@ -59,7 +63,7 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
     return;
   }
 
-  const { eventId, body, category, source, requestId } = parseResult.data;
+  const { eventId, body, category, source, requestId, clientId } = parseResult.data;
   const questionId = deriveQuestionId(requestId);
   const requestHash = calculateRequestHash(eventId, category, source, body);
   const clientIp = extractClientIp(req);
@@ -68,7 +72,13 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
   const questionRef = db.collection(COLLECTION_QUESTIONS).doc(questionId);
   const eventRef = db.collection(COLLECTION_EVENTS).doc(eventId);
   const eventStatsRef = db.collection(COLLECTION_EVENT_STATS).doc(eventId);
-  const rateLimitRef = getRateLimitDocRef(clientIp);
+
+  // 投稿制限: 端末ごと（既定 10分5件）と、回線ごとの大きな上限（既定 10分300件）。0 の制限は行わない。
+  // 端末IDを送らない古い画面からの投稿は、回線ごとの上限だけで判定する。
+  const policies = getSubmissionPolicies();
+  const limitChecks: { ref: DocumentReference; policy: NonNullable<typeof policies.ip> }[] = [];
+  if (policies.device && clientId) limitChecks.push({ ref: getDeviceLimitDocRef(clientId), policy: policies.device });
+  if (policies.ip) limitChecks.push({ ref: getRateLimitDocRef(clientIp), policy: policies.ip });
 
   try {
     const result = await db.runTransaction(async (transaction) => {
@@ -100,15 +110,22 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
         return { status: 409, code: 'EVENT_CLOSED', message: 'このイベントは質問の受付を終了しています。' };
       }
 
-      // レート制限の検査（同一トランザクション内）
+      // 投稿制限の検査（同一トランザクション内。すべて読んでから書く）
       const now = new Date();
-      const rateLimitResult = await evaluateRateLimitInTransaction(transaction, rateLimitRef, now);
-      if (!rateLimitResult.allowed) {
+      const limitResults: { ref: DocumentReference; result: RateLimitCheckResult }[] = [];
+      for (const check of limitChecks) {
+        limitResults.push({
+          ref: check.ref,
+          result: await evaluateRateLimitInTransaction(transaction, check.ref, now, check.policy),
+        });
+      }
+      const denied = limitResults.filter(({ result }) => !result.allowed);
+      if (denied.length > 0) {
         return {
           status: 429,
           code: 'RATE_LIMITED',
           message: '続けて投稿されています。少し時間をおいてから再度お試しください。',
-          retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+          retryAfterSeconds: Math.max(...denied.map(({ result }) => result.retryAfterSeconds ?? 1)),
         };
       }
 
@@ -171,14 +188,16 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
 
       transaction.set(questionRef, newQuestion);
 
-      transaction.set(
-        rateLimitRef,
-        {
-          acceptedAt: rateLimitResult.updatedAcceptedAt,
-          expiresAt: rateLimitResult.expiresAt,
-        },
-        { merge: true }
-      );
+      for (const { ref, result } of limitResults) {
+        transaction.set(
+          ref,
+          {
+            acceptedAt: result.updatedAcceptedAt,
+            expiresAt: result.expiresAt,
+          },
+          { merge: true }
+        );
+      }
 
       transaction.set(
         eventStatsRef,

@@ -34,6 +34,8 @@ export const QuestionSubmissionSchema = z.object({
   }),
   source: z.enum(ALLOWED_SOURCES).default('web'),
   requestId: z.string().uuid('有効なrequestIdを指定してください'),
+  /** 端末ID（ブラウザが作って保存する UUID）。端末ごとの投稿制限に使う。古い画面からは送られない */
+  clientId: z.string().uuid('有効なclientIdを指定してください').optional(),
 });
 
 export type QuestionSubmission = z.infer<typeof QuestionSubmissionSchema>;

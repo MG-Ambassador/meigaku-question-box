@@ -15,3 +15,30 @@ export function newQuestionCount(snapshot: ReportData, latest: ReportData): numb
   return Math.max(0, latest.total - snapshot.total);
 }
 
+
+/**
+ * 自動更新で取り直した先頭ページ（新しい順）から、まだ一覧に無い質問を上に足す。
+ * 件数・集計は新しい値にし、続きの読み込み位置（nextCursor）は今の一覧のものを残す。
+ * 新着が1ページ分を超えて間が抜ける場合は null を返す（呼び出し側で一覧を取り直す）。
+ */
+export function prependNewRows(current: ReportData, fresh: ReportData): { report: ReportData; added: string[] } | null {
+  if (current.rows.length === 0) return { report: fresh, added: fresh.rows.map((row) => row.id) };
+  const seen = new Set(current.rows.map((row) => row.id));
+  const added = fresh.rows.filter((row) => !seen.has(row.id));
+  const overlaps = added.length < fresh.rows.length;
+  if (!overlaps && fresh.hasNext) return null;
+  return {
+    report: {
+      ...current,
+      total: fresh.total,
+      filteredTotal: fresh.filteredTotal,
+      favoriteRevision: fresh.favoriteRevision ?? current.favoriteRevision,
+      categories: fresh.categories,
+      sources: fresh.sources,
+      days: fresh.days,
+      generatedAt: fresh.generatedAt,
+      rows: [...added, ...current.rows],
+    },
+    added: added.map((row) => row.id),
+  };
+}

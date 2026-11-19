@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowUp,
@@ -20,7 +20,7 @@ import {
   type QuestionRow,
   type ReportData,
 } from '@/lib/api-client';
-import { appendReport, newQuestionCount } from '@/lib/report-state';
+import { appendReport, newQuestionCount, prependNewRows } from '@/lib/report-state';
 import { useForegroundPoll } from '@/hooks/use-foreground-poll';
 import { CATEGORIES } from '@/lib/question-draft';
 import { ActionButton } from './action-button';
@@ -29,6 +29,14 @@ import { writeAdminHistory } from '@/lib/admin-history';
 import { EventSettings } from './event-settings';
 
 export type AdminTab = 'questions' | 'analysis' | 'settings';
+/**
+ * 質問・集計タブの自動更新の間隔（30秒）。
+ * NEXT_PUBLIC_ADMIN_REFRESH_MS は E2E テストのビルドで短くするためだけに使う（1秒未満は無視）。
+ */
+export const AUTO_REFRESH_MS = (() => {
+  const override = Number(process.env.NEXT_PUBLIC_ADMIN_REFRESH_MS);
+  return Number.isFinite(override) && override >= 1000 ? override : 30_000;
+})();
 const time = (value: number) =>
   new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -194,13 +202,41 @@ export function EventWorkspace({
     writeAdminHistory(`${url.pathname}${url.search}`);
   }
 
+  // 自動更新で足した質問（数秒だけ目立たせる）と、足したときのスクロール位置の補正
+  const [freshIds, setFreshIds] = useState<Set<string>>(() => new Set());
+  const freshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const scrollFix = useRef<{ height: number; y: number } | null>(null);
+  useEffect(() => () => clearTimeout(freshTimer.current), []);
+  useLayoutEffect(() => {
+    const fix = scrollFix.current;
+    if (!fix) return;
+    scrollFix.current = null;
+    const diff = document.documentElement.scrollHeight - fix.height;
+    if (diff > 0) window.scrollTo({ top: fix.y + diff, behavior: 'instant' });
+  }, [report]);
+
+  /** 新着を一覧に反映する。読んでいる途中なら、上に足した分だけスクロールして位置を保つ */
+  function applyAutoUpdate(next: ReportData, added: string[]) {
+    if (tab === 'questions' && window.scrollY > 200) {
+      scrollFix.current = { height: document.documentElement.scrollHeight, y: window.scrollY };
+    }
+    snapshot.current = next;
+    setReport(next);
+    setExpired(false);
+    if (added.length > 0) {
+      setFreshIds(new Set(added));
+      clearTimeout(freshTimer.current);
+      freshTimer.current = setTimeout(() => setFreshIds(new Set()), 6000);
+    }
+  }
+
   // Poll for background updates
   const poll = useForegroundPoll(
     async (signal) => {
       if (manual.current) return;
       const version = generation.current;
       try {
-        const result = await getAdminReport(
+        let result = await getAdminReport(
           token,
           event.id,
           {
@@ -218,6 +254,38 @@ export function EventWorkspace({
         if (!snapshot.current) {
           snapshot.current = result;
           setReport(result);
+        } else if (
+          sort === 'newest' &&
+          favorite !== 'favorite' &&
+          snapshot.current.rows.length <= 50 &&
+          newQuestionCount(snapshot.current, result) > 0
+        ) {
+          // 新しい順で先頭ページを見ているときは、新着を押さなくても一覧の上に足す。
+          // 古い順・テーマ順や、続きを読み込んで先まで読んでいるときは、並びが変わらないよう案内ボタンのまま。
+          const fresh = await getAdminReport(
+            token,
+            event.id,
+            {
+              pageSize: 50,
+              category: category || undefined,
+              sort,
+              day: day || undefined,
+              source: (source as 'web' | 'instagram') || undefined,
+            },
+            null,
+            signal
+          );
+          if (signal.aborted || version !== generation.current || !snapshot.current) return;
+          const merged = prependNewRows(snapshot.current, fresh);
+          if (merged) {
+            applyAutoUpdate(merged.report, merged.added);
+            result = fresh;
+          } else {
+            // 新着が1ページを超えた。先頭ページしか読んでいないので一覧ごと取り直す
+            const seen = new Set(snapshot.current.rows.map((row) => row.id));
+            applyAutoUpdate(fresh, fresh.rows.filter((row) => !seen.has(row.id)).map((row) => row.id));
+            result = fresh;
+          }
         }
         setLatest(result);
         setLastSuccess(Date.now());
@@ -232,7 +300,7 @@ export function EventWorkspace({
         throw e;
       }
     },
-    tab === 'analysis' ? 15000 : 3000,
+    AUTO_REFRESH_MS,
     tab !== 'settings',
     `${event.id}:${token}:${category}:${sort}:${favorite}:${day}:${source}`
   );
@@ -438,7 +506,7 @@ export function EventWorkspace({
     const isUndoState = favorite === 'favorite' && !q.isFavorite;
     return (
       <article
-        className={`question-row ${isUndoState ? 'is-unfavorited' : ''}`}
+        className={`question-row ${isUndoState ? 'is-unfavorited' : ''} ${freshIds.has(q.id) ? 'is-new' : ''}`}
         key={q.id}
         data-category={q.category}
       >
@@ -509,7 +577,7 @@ export function EventWorkspace({
         </div>
 
         <p className="update-status" role="status">
-          {poll.paused ? '自動更新を一時停止中' : error ? '更新できていません' : '自動更新'}
+          {poll.paused ? '自動更新を一時停止中' : error ? '更新できていません' : '30秒ごとに自動更新'}
           {lastSuccess > 0 && ` · 最終確認 ${time(lastSuccess)}`}
         </p>
         {error && (
@@ -726,7 +794,9 @@ export function EventWorkspace({
             </ActionButton>
           ) : (
             <span className="muted">
-              {sort === 'oldest' ? '古い順に表示中' : sort === 'theme' ? 'テーマ順に表示中' : '新しい順に表示中'}
+              {freshIds.size > 0
+                ? `新しい質問を${freshIds.size}件追加しました`
+                : sort === 'oldest' ? '古い順に表示中' : sort === 'theme' ? 'テーマ順に表示中' : '新しい順に表示中'}
             </span>
           )}
         </div>
@@ -824,7 +894,7 @@ export function EventWorkspace({
         </div>
 
         <p className="update-status" role="status">
-          {error ? '更新できていません' : poll.paused ? '自動更新を一時停止中' : '15秒ごとに更新'}
+          {error ? '更新できていません' : poll.paused ? '自動更新を一時停止中' : '30秒ごとに更新'}
           {data && ` · ${time(data.generatedAt)}時点`}
         </p>
         {error && (
