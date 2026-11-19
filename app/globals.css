@@ -377,7 +377,8 @@ a { color: inherit; }
 .theme-badge[data-category="留学・国際交流"] { color: var(--ink); background: var(--theme-abroad-bg); border-color: var(--theme-abroad-border); }
 .theme-badge[data-category="その他"] { color: var(--ink); background: var(--theme-other-bg); border-color: var(--theme-other-border); }
 
-.star-button {
+.star-button,
+.question-delete-button {
   width: 48px;
   height: 48px;
   display: inline-flex;
@@ -391,11 +392,13 @@ a { color: inherit; }
   transition: transform 120ms ease, color 120ms ease, background-color 120ms ease;
   touch-action: manipulation;
 }
-.star-button:hover:not(:disabled) {
+.star-button:hover:not(:disabled),
+.question-delete-button:hover:not(:disabled) {
   background-color: #f5f5f5;
   color: #737373;
 }
-.star-button:focus-visible {
+.star-button:focus-visible,
+.question-delete-button:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
@@ -406,7 +409,8 @@ a { color: inherit; }
   fill: var(--brand);
   stroke: #926600;
 }
-.star-button:active:not(:disabled) {
+.star-button:active:not(:disabled),
+.question-delete-button:active:not(:disabled) {
   transform: scale(0.92);
 }
 .question-delete-button:hover:not(:disabled) {

@@ -576,7 +576,7 @@ export function EventWorkspace({
             {canManageRooms && (
               <button
                 type="button"
-                className="star-button question-delete-button"
+                className="question-delete-button"
                 aria-label="この質問を削除"
                 disabled={deletingId === q.id}
                 onClick={() => setDeleteTarget(q)}
