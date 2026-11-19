@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readDraft, writeDraft, prepareSubmission, DRAFT_TTL } from '../lib/question-draft.ts';
 import { appendReport, newQuestionCount } from '../lib/report-state.ts';
-import { apiFetch, getAdminReport, updateAdminEvent, getPublicEvent, ApiError, login, operatorAction } from '../lib/api-client.ts';
+import { apiFetch, getAdminReport, updateAdminEvent, getPublicEvent, ApiError, isSubmissionBusy, login, operatorAction } from '../lib/api-client.ts';
 import { readSession, writeSession, clearSession } from '../lib/admin-session.ts';
 import { validateNewPassword } from '../lib/password-rules.ts';
 import { getRecruitmentUrl } from '../lib/public-url.ts';
@@ -75,6 +75,19 @@ test('API client preserves Retry-After and aborts stalled requests', async () =>
     await assert.rejects(apiFetch('/test', { timeoutMs: 5 }), { name: 'TimeoutError' });
     const controller = new AbortController(); const promise = apiFetch('/test', { signal: controller.signal }); controller.abort();
     await assert.rejects(promise, { name: 'AbortError' });
+  } finally { globalThis.fetch = oldFetch; }
+});
+test('Cloud Run 429 without a body is busy, not the per-device posting limit', async () => {
+  const oldFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response('Rate exceeded.', { status: 429 });
+    await assert.rejects(apiFetch('/test'), (e) => e instanceof ApiError && e.retryAfterSeconds === undefined && isSubmissionBusy(e));
+    globalThis.fetch = async () => Response.json({ error: { code: 'RATE_LIMITED', message: 'wait' } }, { status: 429, headers: { 'Retry-After': '23' } });
+    await assert.rejects(apiFetch('/test'), (e) => e instanceof ApiError && !isSubmissionBusy(e));
+    globalThis.fetch = async () => Response.json({ error: { code: 'SUBMISSION_BUSY', message: 'busy' } }, { status: 503 });
+    await assert.rejects(apiFetch('/test'), (e) => isSubmissionBusy(e));
+    globalThis.fetch = async () => Response.json({ error: { code: 'SUBMISSION_UNCERTAIN', message: '?' } }, { status: 503 });
+    await assert.rejects(apiFetch('/test'), (e) => e instanceof ApiError && !isSubmissionBusy(e));
   } finally { globalThis.fetch = oldFetch; }
 });
 test('admin session survives reload, expires and recovers from corrupt or blocked storage', () => {

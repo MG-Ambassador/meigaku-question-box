@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowLeft, House, LockKeyhole } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ApiError, submitQuestion, type EventItem } from '@/lib/api-client';
+import { ApiError, isSubmissionBusy, submitQuestion, type EventItem } from '@/lib/api-client';
 import { resolvePublicPath } from '@/lib/public-url';
 import {
   CATEGORIES,
@@ -196,7 +196,10 @@ export function QuestionForm({
     } catch (e) {
       if (!mounted.current) return;
 
-      if (e instanceof ApiError && e.statusCode >= 400 && e.statusCode < 500 && e.statusCode !== 408) {
+      if (isSubmissionBusy(e)) {
+        // 混雑で処理されなかった（保存されていない）。投稿の上限ではないので待たせず、同じ内容のまま再送できる
+        setError('ただいま送信が混み合っています。少し待ってから、もう一度送信してください。');
+      } else if (e instanceof ApiError && e.statusCode >= 400 && e.statusCode < 500 && e.statusCode !== 408) {
         const next = { ...current.current, pending: undefined };
         if (e.statusCode === 429) {
           next.retryAt = Date.now() + Math.max(1, e.retryAfterSeconds || 600) * 1000;
@@ -208,9 +211,6 @@ export function QuestionForm({
           setError(e.message);
         }
         persist(next);
-      } else if (e instanceof ApiError && e.code === 'SUBMISSION_BUSY') {
-        // サーバーが処理を始めずに断った（保存されていない）。同じ内容のまま再送できる
-        setError('ただいま送信が混み合っています。少し待ってから、もう一度送信してください。');
       } else {
         setError(
           '受付が完了したか確認できませんでした。同じ内容で確認できます。'
