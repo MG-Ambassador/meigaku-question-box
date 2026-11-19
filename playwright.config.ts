@@ -13,6 +13,7 @@ export default defineConfig({
   webServer: {
     command: 'node scripts/serve-ui-test.mjs',
     url: 'http://127.0.0.1:3100/test-box/', reuseExistingServer: process.env.PW_REUSE_SERVER === '1', timeout: 180000, stdout: 'pipe',
-    env: { NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:3100', NEXT_PUBLIC_BASE_PATH: '/test-box' },
+    // 運営画面の自動更新（本番30秒）をテストでは3秒にする
+    env: { NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:3100', NEXT_PUBLIC_BASE_PATH: '/test-box', NEXT_PUBLIC_ADMIN_REFRESH_MS: '3000' },
   },
 });

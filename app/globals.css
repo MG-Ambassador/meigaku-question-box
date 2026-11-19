@@ -1336,3 +1336,13 @@ a { color: inherit; }
 }
 
 @media (max-width: 330px) { .sealed-letter { transform: scale(.9); transform-origin: 50% 0; } }
+
+/* 自動更新で足した質問: 光の色で数秒だけ知らせる */
+.question-row.is-new { animation: question-arrived 6s ease-out both; }
+@keyframes question-arrived {
+  0%, 60% { background: var(--light-wash); }
+  100% { background: #fff; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .question-row.is-new { animation: none; box-shadow: inset 4px 0 0 var(--light); }
+}

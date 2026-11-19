@@ -109,3 +109,37 @@ test('login and operator APIs send credentials only in the body and encode IDs',
     assert.match(calls[1].url, /operators\/a%2Fb\/reset$/); assert.equal(calls[1].options.headers.get('Authorization'), 'Bearer token');
   } finally { globalThis.fetch = oldFetch; }
 });
+test('client id is a stable UUID per browser and survives blocked storage', async () => {
+  const { getClientId, CLIENT_ID_KEY } = await import('../lib/client-id.ts');
+  const store = storage();
+  const first = getClientId(store, () => '11111111-1111-4111-8111-111111111111');
+  assert.equal(first, '11111111-1111-4111-8111-111111111111');
+  assert.equal(getClientId(store, () => { throw Error('must reuse the saved id'); }), first);
+  store.setItem(CLIENT_ID_KEY, 'broken');
+  assert.match(getClientId(store), /^[0-9a-f-]{36}$/);
+  const blocked = { getItem() { throw Error(); }, setItem() { throw Error(); } };
+  const a = getClientId(blocked); const b = getClientId(blocked);
+  assert.equal(a, b, 'same id while the page is open even without storage');
+});
+test('question submission sends the client id with the payload', async () => {
+  const { submitQuestion } = await import('../lib/api-client.ts');
+  const oldFetch = globalThis.fetch; const calls = [];
+  globalThis.fetch = async (url, options) => { calls.push({ url, options }); return Response.json({ ok: true, id: 'x', requestId: id }); };
+  try {
+    await submitQuestion({ eventId: 'A', body: 'q', category: '大学生活', source: 'web', requestId: id, clientId: '22222222-2222-4222-8222-222222222222' });
+    assert.equal(JSON.parse(calls[0].options.body).clientId, '22222222-2222-4222-8222-222222222222');
+  } finally { globalThis.fetch = oldFetch; }
+});
+test('auto refresh prepends only unseen rows, keeps paging position and detects gaps', async () => {
+  const { prependNewRows } = await import('../lib/report-state.ts');
+  const current = { total: 3, filteredTotal: 3, generatedAt: 100, rows: [{ id: '3' }, { id: '2' }, { id: '1' }], categories: [], sources: [], days: [], hasNext: true, nextCursor: 'older' };
+  const fresh = { ...current, total: 5, filteredTotal: 5, generatedAt: 200, rows: [{ id: '5' }, { id: '4' }, { id: '3' }], nextCursor: 'other' };
+  const merged = prependNewRows(current, fresh);
+  assert.deepEqual(merged.report.rows.map((r) => r.id), ['5', '4', '3', '2', '1']);
+  assert.deepEqual(merged.added, ['5', '4']);
+  assert.equal(merged.report.total, 5); assert.equal(merged.report.nextCursor, 'older');
+  assert.equal(newQuestionCount(merged.report, fresh), 0, 'banner disappears after merge');
+  const gap = { ...fresh, rows: [{ id: '60' }, { id: '59' }], hasNext: true };
+  assert.equal(prependNewRows(current, gap), null);
+  assert.deepEqual(prependNewRows({ ...current, rows: [] }, fresh).report, fresh);
+});

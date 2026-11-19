@@ -120,6 +120,7 @@ test('direct input, tactile surface, successful submission and return to the roo
   await page.mouse.up();
   await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeFocused();
   expect(state.posted).toHaveLength(1); expect(state.posted[0].category).toBe('学び・授業');
+  expect(state.posted[0].clientId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   // 完了画面には共有の操作を置かない。便箋は封筒に入り、封筒に「受付」印が押される。便箋には押さない。
   await expect(page.getByRole('button', { name: 'この質問箱を共有' })).toHaveCount(0);
   await expect(page.locator('.sealed-letter').getByRole('img', { name: '受付' })).toBeVisible();
@@ -162,6 +163,19 @@ test('150 questions paginate without replacement; incoming questions preserve th
   await expect(page.getByRole('button', { name: /新しい質問が2件/ })).toBeAttached({ timeout: 10000 });
   expect(await page.evaluate(() => window.scrollY)).toBe(position); await expect(page.locator('.question-row').first()).toContainText('質問 150：');
   await page.getByRole('button', { name: /新しい質問が2件/ }).click(); await expect(page.locator('.question-row')).toHaveCount(50); await expect(page.locator('.question-row').first()).toContainText('質問 152：');
+});
+
+test('newest first page shows incoming questions automatically without pressing refresh', async ({ page }) => {
+  const state = await fixture(page); await login(page);
+  await expect(page.locator('.question-row')).toHaveCount(50);
+  await expect(page.locator('.question-row').first()).toContainText('質問 150：');
+  state.count += 2;
+  await expect(page.locator('.question-row').first()).toContainText('質問 152：', { timeout: 10000 });
+  await expect(page.locator('.question-row')).toHaveCount(52);
+  await expect(page.locator('.question-row.is-new')).toHaveCount(2);
+  await expect(page.getByText('新しい質問を2件追加しました')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /届いた質問/ })).toContainText('152');
+  await expect(page.getByRole('button', { name: /新しい質問が/ })).toHaveCount(0);
 });
 
 test('expired cursor preserves rows and allows explicit refresh; tabs restore with Back', async ({ page }) => {

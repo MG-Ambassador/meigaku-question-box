@@ -92,8 +92,43 @@ export interface RateLimitPolicy {
   max: number;
 }
 
-/** 質問投稿: 10分5件 */
+/** 旧仕様の質問投稿上限（10分5件）。evaluateRateLimitInTransaction の既定値としてだけ残す */
 export const SUBMISSION_LIMIT: RateLimitPolicy = { windowSeconds: WINDOW_SECONDS, max: MAX_SUBMISSIONS_PER_WINDOW };
+
+/** 端末ごとの投稿上限の既定値（10分5件） */
+export const DEFAULT_SUBMISSION_DEVICE_MAX = 5;
+/**
+ * 回線（IP）ごとの投稿上限の既定値（10分300件）。
+ * 会場 Wi-Fi のように大勢が同じ IP を使っても届かない値にし、Bot などの大量送信の歯止めにだけ使う。
+ */
+export const DEFAULT_SUBMISSION_IP_MAX = 300;
+
+function readLimit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
+/**
+ * 質問投稿の上限。環境変数で変えられ、0 にするとその制限は行わない。
+ * - SUBMISSION_LIMIT_PER_DEVICE: 端末（ブラウザ）ごと、既定 5
+ * - SUBMISSION_LIMIT_PER_IP: 回線（IP）ごと、既定 300
+ * 窓はどちらも10分。
+ */
+export function getSubmissionPolicies(): { device: RateLimitPolicy | null; ip: RateLimitPolicy | null } {
+  const deviceMax = readLimit('SUBMISSION_LIMIT_PER_DEVICE', DEFAULT_SUBMISSION_DEVICE_MAX);
+  const ipMax = readLimit('SUBMISSION_LIMIT_PER_IP', DEFAULT_SUBMISSION_IP_MAX);
+  return {
+    device: deviceMax > 0 ? { windowSeconds: WINDOW_SECONDS, max: deviceMax } : null,
+    ip: ipMax > 0 ? { windowSeconds: WINDOW_SECONDS, max: ipMax } : null,
+  };
+}
+
+/** 端末ごとの投稿制限キー。端末ID（ブラウザが作る UUID）も HMAC 化して保存する */
+export function getDeviceLimitDocRef(clientId: string): DocumentReference {
+  return getScopedLimitDocRef('device', clientId.toLowerCase());
+}
 
 export interface RateLimitCheckResult {
   allowed: boolean;
