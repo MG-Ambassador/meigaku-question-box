@@ -356,6 +356,17 @@ export function toggleAdminQuestionFavorite(
   );
 }
 
+/** 運営（ルーム管理ができる人）：質問を完全に削除する。取り消しはできない。 */
+export function deleteAdminQuestion(
+  token: string,
+  questionId: string
+): Promise<{ ok: boolean; questionId: string }> {
+  return apiFetch<{ ok: boolean; questionId: string }>(
+    `/api/admin/questions/${encodeURIComponent(questionId)}`,
+    { method: 'DELETE', token }
+  );
+}
+
 export function changeAdminEventLifecycle(
   token: string,
   id: string,

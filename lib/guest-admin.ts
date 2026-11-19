@@ -157,6 +157,14 @@ export async function guestFetch<T>(path: string, init: { method?: string; body?
     return { ok: true, questionId: q.id, favorite: q.isFavorite } as T;
   }
 
+  m = p.match(/^\/api\/admin\/questions\/([^/]+)$/);
+  if (m && method === 'DELETE') {
+    const index = questions.findIndex((x) => x.id === decodeURIComponent(m![1]));
+    if (index < 0) throw new ApiError(404, { code: 'QUESTION_NOT_FOUND', message: '質問が見つかりません。すでに削除されている可能性があります。' });
+    const [q] = questions.splice(index, 1);
+    return { ok: true, questionId: q.id } as T;
+  }
+
   if (method === 'POST' && p === '/api/admin/trash/empty') {
     const ids = events.filter((e) => e.status === 'deleted').map((e) => e.id);
     const before = questions.length;

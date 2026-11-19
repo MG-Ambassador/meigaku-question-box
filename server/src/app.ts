@@ -26,6 +26,7 @@ import {
   getAdminMeHandler,
   getAdminReportHandler,
   toggleQuestionFavoriteHandler,
+  deleteQuestionHandler,
 } from './report.js';
 
 declare global {
@@ -70,7 +71,7 @@ export function createApp() {
         }
         return callback(new Error('CORS_NOT_ALLOWED'));
       },
-      methods: ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       exposedHeaders: ['Retry-After'],
       credentials: true,
@@ -115,6 +116,7 @@ export function createApp() {
   app.get('/api/admin/events', requireAdminAuth, listAdminEventsHandler);
   app.get('/api/admin', requireAdminAuth, getAdminReportHandler);
   app.put('/api/admin/questions/:id/favorite', requireAdminAuth, toggleQuestionFavoriteHandler);
+  app.delete('/api/admin/questions/:id', requireAdminAuth, requirePermission('room.manage'), deleteQuestionHandler);
   app.post('/api/events', requireAdminAuth, requirePermission('room.manage'), saveEventHandler);
   // スタッフも受付の開始・終了はできる。タイトル・日付を変えたかどうかは patchEventHandler で見る。
   app.patch('/api/events/:id', requireAdminAuth, requirePermission('room.toggleOpen'), patchEventHandler);

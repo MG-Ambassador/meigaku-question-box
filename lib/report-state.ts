@@ -42,3 +42,25 @@ export function prependNewRows(current: ReportData, fresh: ReportData): { report
     added: added.map((row) => row.id),
   };
 }
+
+const jstDay = (ms: number) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+
+/**
+ * 削除した質問を一覧から外し、件数・集計を1つ減らす（次の取り直しを待たずに表示を合わせる）。
+ * 一覧に無い質問でも件数は減らす（自動更新で先に取った最新値にも同じ調整をかけるため）。
+ */
+export function removeQuestion(report: ReportData, row: QuestionRow): ReportData {
+  const dec = <T extends { count: number }>(items: T[], match: (item: T) => boolean) =>
+    items.map((item) => (match(item) ? { ...item, count: item.count - 1 } : item)).filter((item) => item.count > 0);
+  const day = jstDay(row.created_at);
+  return {
+    ...report,
+    total: Math.max(0, report.total - 1),
+    filteredTotal: report.filteredTotal === undefined ? undefined : Math.max(0, report.filteredTotal - 1),
+    categories: dec(report.categories, (c) => c.category === row.category),
+    sources: dec(report.sources, (s) => s.source === row.source),
+    days: dec(report.days, (d) => d.day === day),
+    rows: report.rows.filter((r) => r.id !== row.id),
+  };
+}

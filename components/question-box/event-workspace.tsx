@@ -10,23 +10,26 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Bookmark,
+  Trash2,
   X,
 } from 'lucide-react';
 import {
   ApiError,
   getAdminReport,
   toggleAdminQuestionFavorite,
+  deleteAdminQuestion,
   type EventItem,
   type QuestionRow,
   type ReportData,
 } from '@/lib/api-client';
-import { appendReport, newQuestionCount, prependNewRows } from '@/lib/report-state';
+import { appendReport, newQuestionCount, prependNewRows, removeQuestion } from '@/lib/report-state';
 import { useForegroundPoll } from '@/hooks/use-foreground-poll';
 import { CATEGORIES } from '@/lib/question-draft';
 import { ActionButton } from './action-button';
 import { AppSheet } from './app-sheet';
 import { writeAdminHistory } from '@/lib/admin-history';
 import { EventSettings } from './event-settings';
+import { ConfirmDialog } from './confirm-dialog';
 
 export type AdminTab = 'questions' | 'analysis' | 'settings';
 /**
@@ -96,6 +99,9 @@ export function EventWorkspace({
 
   // Favorites tracking
   const pendingFavorites = useRef<Set<string>>(new Set());
+  // 削除の確認中の質問と、送信中かどうか
+  const [deleteTarget, setDeleteTarget] = useState<QuestionRow | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const insightsScrollY = useRef(0);
 
   const manual = useRef<AbortController | null>(null);
@@ -431,6 +437,27 @@ export function EventWorkspace({
     }
   }
 
+  async function handleDeleteQuestion(q: QuestionRow) {
+    if (deletingId) return;
+    setDeletingId(q.id);
+    setPageError('');
+    try {
+      await deleteAdminQuestion(token, q.id);
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 401) { onAuthError(); return; }
+      // すでに消えている（他の人が先に削除した）ときは、一覧から外すだけにする
+      if (!(err instanceof ApiError && err.statusCode === 404 && err.code === 'QUESTION_NOT_FOUND')) {
+        setPageError(err instanceof ApiError ? err.message : '質問を削除できませんでした。');
+        setDeletingId(null);
+        return;
+      }
+    }
+    setReport((prev) => (prev ? removeQuestion(prev, q) : prev));
+    if (snapshot.current) snapshot.current = removeQuestion(snapshot.current, q);
+    setLatest((prev) => (prev ? removeQuestion(prev, q) : prev));
+    setDeletingId(null);
+  }
+
   function clearAllFilters(writeHistory = true) {
     setCategory('');
     setSort('newest');
@@ -546,6 +573,17 @@ export function EventWorkspace({
                 aria-hidden="true"
               />
             </button>
+            {canManageRooms && (
+              <button
+                type="button"
+                className="question-delete-button"
+                aria-label="この質問を削除"
+                disabled={deletingId === q.id}
+                onClick={() => setDeleteTarget(q)}
+              >
+                <Trash2 size={20} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
           </div>
         </div>
         <p className="question-body">{q.body}</p>
@@ -1023,6 +1061,20 @@ export function EventWorkspace({
           canManage={canManageRooms}
         />
       </section>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="この質問を削除しますか？"
+        description={`「${deleteTarget ? (deleteTarget.body.length > 60 ? `${deleteTarget.body.slice(0, 60)}…` : deleteTarget.body) : ''}」を完全に削除します。集計の件数からも外れ、全員のお気に入りからも消えます。この操作は取り消せません。`}
+        action="削除する"
+        actionTone="danger"
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) void handleDeleteQuestion(target);
+        }}
+      />
     </div>
   );
 }
