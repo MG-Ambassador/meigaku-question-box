@@ -208,6 +208,9 @@ export function QuestionForm({
           setError(e.message);
         }
         persist(next);
+      } else if (e instanceof ApiError && e.code === 'SUBMISSION_BUSY') {
+        // サーバーが処理を始めずに断った（保存されていない）。同じ内容のまま再送できる
+        setError('ただいま送信が混み合っています。少し待ってから、もう一度送信してください。');
       } else {
         setError(
           '受付が完了したか確認できませんでした。同じ内容で確認できます。'
