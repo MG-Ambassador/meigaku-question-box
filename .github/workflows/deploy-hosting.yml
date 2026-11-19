@@ -1,0 +1,84 @@
+name: Deploy Firebase Hosting
+
+# GitHub Pages から Firebase Hosting への移行用（移行計画書 フェーズ B）。
+# - プルリクエスト: プレビューチャンネル（期限付きの別 URL）に公開する。本番には触れない。
+# - 手動実行: channel に "live" を指定したときだけ本番サイトに公開する（フェーズ C の切り替え当日に使う）。
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'hooks/**'
+      - 'public/**'
+      - 'package*.json'
+      - 'next.config.ts'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/deploy-hosting.yml'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: '公開先（preview＝プレビュー、live＝本番）'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - live
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-hosting-${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'preview' }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Hosting
+    runs-on: ubuntu-latest
+    # フォークからのプルリクエストでは Google Cloud の認証ができないので動かさない
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js static export
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+          # 本番ではゲスト管理者（ダミーデータの確認用モード）を表示しない
+          NEXT_PUBLIC_ENABLE_GUEST_ADMIN: 'false'
+          # Firebase Hosting ではドメイン直下で公開するので、サブパスは付けない
+          NEXT_PUBLIC_BASE_PATH: ''
+
+      - name: Deploy to preview channel
+        if: github.event_name == 'pull_request' || inputs.channel == 'preview'
+        run: |
+          npx -y firebase-tools hosting:channel:deploy preview \
+            --expires 30d \
+            --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
+
+      - name: Deploy to live site
+        if: github.event_name == 'workflow_dispatch' && inputs.channel == 'live'
+        run: |
+          npx -y firebase-tools deploy --only hosting \
+            --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
