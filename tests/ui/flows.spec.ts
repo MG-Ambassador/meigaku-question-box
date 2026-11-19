@@ -812,9 +812,14 @@ for (const width of [320, 390, 768, 1280]) {
     }
     const toggle = page.getByRole('switch', { name: /質問を受け付ける/ });
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    // 外枠とつまみは同じ瞬間に測る。別々に測ると、間に Web フォントの読み込みなどで
+    // レイアウトがずれたとき（CI で発生）に、ずれた分が「つまみの位置ずれ」に見えてしまう
     const measure = async () => {
-      const track = (await toggle.boundingBox())!;
-      const thumb = (await toggle.locator('span').first().boundingBox())!;
+      const { track, thumb } = await toggle.evaluate(async (el) => {
+        await document.fonts.ready;
+        const box = (r: DOMRect) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+        return { track: box(el.getBoundingClientRect()), thumb: box(el.querySelector('span')!.getBoundingClientRect()) };
+      });
       expect(thumb.y - track.y).toBeCloseTo((track.height - thumb.height) / 2, 1);
       return { track, thumb };
     };
