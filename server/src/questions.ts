@@ -24,6 +24,7 @@ import {
   type RateLimitCheckResult,
 } from './rate-limit.js';
 import type { DocumentReference } from '@google-cloud/firestore';
+import { runSerialized, SubmissionBusyError, SubmissionDeadlineError } from './submission-queue.js';
 
 /**
  * requestId から決定的な Firestore ドキュメントIDを生成する (SHA-256)
@@ -81,7 +82,8 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
   if (policies.ip) limitChecks.push({ ref: getRateLimitDocRef(clientIp), policy: policies.ip });
 
   try {
-    const result = await db.runTransaction(async (transaction) => {
+    // 同じ部屋への投稿は1件ずつ順に処理する（集計ドキュメントの取り合いを防ぐ。submission-queue.ts）
+    const result = await runSerialized(eventId, () => db.runTransaction(async (transaction) => {
       // 2-a. 既存の質問ドキュメント確認（冪等性チェック）
       const existingQuestionSnap = await transaction.get(questionRef);
       if (existingQuestionSnap.exists) {
@@ -215,7 +217,7 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
       );
 
       return { status: 201, id: questionId };
-    });
+    }));
 
     if (result.status === 200 || result.status === 201) {
       res.status(result.status).json({
@@ -247,7 +249,23 @@ export async function submitQuestionHandler(req: Request, res: Response): Promis
       },
     });
   } catch (error) {
-    console.error('Error submitting question:', error);
+    if (error instanceof SubmissionBusyError) {
+      // 処理を始めていないので保存されていないことは確実。少し待って同じ内容で再送してもらう
+      res.setHeader('Retry-After', '5');
+      res.status(503).json({
+        error: {
+          code: 'SUBMISSION_BUSY',
+          message: 'ただいま送信が混み合っています。少し待ってから、もう一度送信してください。',
+          retryAfterSeconds: 5,
+        },
+      });
+      return;
+    }
+    if (error instanceof SubmissionDeadlineError) {
+      console.warn('Question submission exceeded deadline (result uncertain)');
+    } else {
+      console.error('Error submitting question:', error);
+    }
     res.status(503).json({
       error: {
         code: 'SUBMISSION_UNCERTAIN',
