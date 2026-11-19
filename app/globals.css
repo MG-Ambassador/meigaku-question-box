@@ -409,6 +409,14 @@ a { color: inherit; }
 .star-button:active:not(:disabled) {
   transform: scale(0.92);
 }
+.question-delete-button:hover:not(:disabled) {
+  background-color: var(--danger-wash);
+  color: var(--danger);
+}
+.question-delete-button:disabled {
+  opacity: 0.4;
+  cursor: progress;
+}
 
 .filter-bar {
   display: flex;

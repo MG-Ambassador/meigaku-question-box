@@ -6,12 +6,14 @@ import {
   COLLECTION_QUESTIONS,
   COLLECTION_EVENTS,
   COLLECTION_USER_FAVORITES,
+  COLLECTION_AUDIT,
   Timestamp,
 } from './firestore.js';
 import {
   type EventStatsDoc,
   type QuestionDoc,
   type EventDoc,
+  type AuditDoc,
   type Category,
   CATEGORY_ORDER,
   FavoriteActionSchema,
@@ -547,6 +549,100 @@ export async function toggleQuestionFavoriteHandler(req: Request, res: Response)
       error: {
         code: 'STORAGE_UNAVAILABLE',
         message: 'お気に入りの更新に失敗しました。',
+      },
+    });
+  }
+}
+
+/** 集計の件数を1つ減らす。0 になった項目は消す。 */
+function decrementCount(counts: Record<string, number> | undefined, key: string): Record<string, number> {
+  const next = { ...(counts || {}) };
+  if (key in next) {
+    const value = (next[key] || 0) - 1;
+    if (value > 0) next[key] = value;
+    else delete next[key];
+  }
+  return next;
+}
+
+/**
+ * DELETE /api/admin/questions/:id
+ * 質問を完全に削除する（取り消しはできない）。集計の件数を減らし、全員のお気に入りからも外す。
+ * 採番（lastSequence）と dataVersion はそのまま。番号順のページ送りは削除後も崩れない。
+ */
+export async function deleteQuestionHandler(req: Request, res: Response): Promise<void> {
+  const questionId = req.params.id;
+  const actorSub = req.adminUser?.sub || '';
+  const db = getFirestore();
+  const questionRef = db.collection(COLLECTION_QUESTIONS).doc(questionId);
+  const favoritesQuery = () => db.collection(COLLECTION_USER_FAVORITES).where('questionId', '==', questionId);
+
+  try {
+    // トランザクション内ではクエリを使わず、先に対象のお気に入りを集めてから個別に読む。
+    const favoriteDocs = (await favoritesQuery().get()).docs;
+
+    const result = await db.runTransaction(async (transaction) => {
+      const questionSnap = await transaction.get(questionRef);
+      if (!questionSnap.exists) return { status: 404, code: 'QUESTION_NOT_FOUND', message: '質問が見つかりません。すでに削除されている可能性があります。' };
+      const question = questionSnap.data() as QuestionDoc;
+      const eventRef = db.collection(COLLECTION_EVENTS).doc(question.eventId);
+      const statsRef = db.collection(COLLECTION_EVENT_STATS).doc(question.eventId);
+      const [eventSnap, statsSnap, ...favoriteSnaps] = await Promise.all([
+        transaction.get(eventRef),
+        transaction.get(statsRef),
+        ...favoriteDocs.map((doc) => transaction.get(doc.ref)),
+      ]);
+      if (!eventSnap.exists) return { status: 404, code: 'EVENT_NOT_FOUND', message: 'ルームが見つかりません。' };
+      if ((eventSnap.data() as EventDoc).status === 'deleted') {
+        return { status: 404, code: 'EVENT_DELETED', message: 'ごみ箱のルームの質問は削除できません。' };
+      }
+      // お気に入りに入れていた人ごとに、お気に入り一覧のカーソルを失効させる。
+      const activeSubs = [...new Set(favoriteSnaps
+        .filter((snap) => snap.exists && snap.data()?.active === true)
+        .map((snap) => String(snap.data()?.sub || '')))].filter(Boolean);
+      const revisionRefs = activeSubs.map((sub) => favoriteStateRef(sub, question.eventId));
+      const revisionSnaps = await Promise.all(revisionRefs.map((ref) => transaction.get(ref)));
+
+      const now = Timestamp.now();
+      transaction.delete(questionRef);
+      for (const snap of favoriteSnaps) if (snap.exists) transaction.delete(snap.ref);
+      revisionRefs.forEach((ref, i) => {
+        transaction.set(ref, { revision: (revisionSnaps[i].data()?.revision ?? 0) + 1, updatedAt: now });
+      });
+      if (statsSnap.exists) {
+        const stats = statsSnap.data() as EventStatsDoc;
+        transaction.set(statsRef, {
+          total: Math.max(0, (stats.total || 0) - 1),
+          categories: decrementCount(stats.categories, question.category),
+          sources: decrementCount(stats.sources, question.source),
+          recentDays: decrementCount(stats.recentDays, question.dayJst),
+          updatedAt: now,
+        }, { merge: true });
+      }
+      const auditLog: AuditDoc = {
+        actorSub,
+        action: 'question_delete',
+        eventId: question.eventId,
+        targetId: questionId,
+        version: question.sequence,
+        createdAt: now,
+      };
+      transaction.set(db.collection(COLLECTION_AUDIT).doc(crypto.randomUUID()), auditLog);
+      return null;
+    });
+    if (result) { res.status(result.status).json({ error: { code: result.code, message: result.message } }); return; }
+
+    // 読み取り後にお気に入りへ追加された分の取りこぼしを片付ける（質問は削除済みなので以後は増えない）。
+    const leftovers = (await favoritesQuery().get()).docs;
+    await Promise.all(leftovers.map((doc) => doc.ref.delete()));
+
+    res.json({ ok: true, questionId });
+  } catch (error) {
+    console.error('Error deleting question:', error);
+    res.status(503).json({
+      error: {
+        code: 'STORAGE_UNAVAILABLE',
+        message: '質問を削除できませんでした。時間をおいてもう一度お試しください。',
       },
     });
   }
