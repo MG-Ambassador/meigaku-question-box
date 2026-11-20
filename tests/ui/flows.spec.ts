@@ -677,6 +677,30 @@ test('R08: unfavoriting question preserves card in-place with inline undo notice
   await expect(undoNotice).toBeHidden();
 });
 
+test('Cloud Run 429 without a body is shown as busy and can be resent at once with the same request', async ({ page }) => {
+  await fixture(page);
+  await page.goto('?event=campus');
+  await startWriting(page); await page.getByLabel('聞いてみたいこと').fill('混雑で断られても待たされないかテスト');
+
+  const posted: unknown[] = [];
+  let first = true;
+  await page.route('**/api/questions', async (route) => {
+    posted.push(route.request().postDataJSON());
+    if (first) { first = false; await route.fulfill({ status: 429, contentType: 'text/plain', body: 'Rate exceeded.' }); return; }
+    await route.fulfill({ status: 201, json: { ok: true, id: 'saved' } });
+  });
+
+  await foldAndSend(page);
+  await expect(page.getByText('ただいま送信が混み合っています。', { exact: false })).toBeVisible();
+  await expect(page.getByText('続けて投稿されています', { exact: false })).toHaveCount(0);
+
+  const resend = page.getByRole('button', { name: '送信結果を確認' });
+  await expect(resend).toBeEnabled();
+  await resend.click();
+  await expect(page.getByRole('heading', { name: '質問を受け付けました' })).toBeVisible();
+  expect(posted).toHaveLength(2); expect(posted[1]).toEqual(posted[0]);
+});
+
 test('R10: unconfirmed submission leaves body readOnly and allows text selection with processing label', async ({ page }) => {
   const state = await fixture(page);
   state.loseResponse = true;

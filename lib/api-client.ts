@@ -28,6 +28,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 混雑のため投稿が処理されなかった（保存されていない）かどうか。
+ * - SUBMISSION_BUSY: サーバーが順番待ちの上限で処理を始めずに断った
+ * - code が RATE_LIMITED でない 429: Cloud Run が空きインスタンスを待ちきれずに断った（本文も Retry-After もない）
+ * どちらも投稿の上限ではないので、入力と requestId を残したまま再送してよい。
+ */
+export function isSubmissionBusy(e: unknown): boolean {
+  return e instanceof ApiError && (e.code === 'SUBMISSION_BUSY' || (e.statusCode === 429 && e.code !== 'RATE_LIMITED'));
+}
+
 export interface EventItem {
   id: string;
   title: string;
